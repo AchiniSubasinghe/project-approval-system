@@ -1,0 +1,84 @@
+# Build results
+bin/
+obj/
+out/
+dist/
+
+# Blazor-specific
+wwwroot/service-worker.js
+wwwroot/service-worker.js.map
+wwwroot/.well-known/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio cache/options
+.vs/
+.vscode/
+.idea/
+
+# Visual Studio Code
+*.code-workspace
+*.ms-vscode-remote
+
+# Rider
+.idea/
+*.sln.iml
+*.mdb
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# Package manager
+packages/
+.packages/
+node_modules/
+
+# Build output
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# Test Results
+TestResults/
+*.trx
+*.coverage
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+.env
+.env.local
+
+# User settings
+appsettings.local.json
+
+# Database files (if applicable)
+*.db
+*.sqlite
+*.sqlite3
+
+# Rider
+.idea/
+*.sln.iml
+
