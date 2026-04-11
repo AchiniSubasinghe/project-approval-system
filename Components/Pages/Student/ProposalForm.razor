@@ -1,0 +1,172 @@
+@page "/student/proposal/new"
+@page "/student/proposal/{Id:int}/edit"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using project_approval_system.Data
+@attribute [Authorize(Roles = Roles.Student)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Id is null ? "New proposal" : "Edit proposal")</PageTitle>
+
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h4">@(Id is null ? "New proposal" : "Edit proposal")</MudText>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error">@loadError</MudAlert>
+    }
+    else
+    {
+        <MudForm @ref="form">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="input.Title" Label="Title" Variant="Variant.Outlined" Required="true"
+                              MaxLength="200" />
+                <MudSelect T="int" Label="Research Area" Variant="Variant.Outlined"
+                           @bind-Value="input.ResearchAreaId" Required="true">
+                    @foreach (var area in researchAreas)
+                    {
+                        <MudSelectItem T="int" Value="area.Id">@area.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTextField @bind-Value="input.TechnicalStack" Label="Technical Stack" Variant="Variant.Outlined"
+                              Required="true" MaxLength="500"
+                              HelperText="Comma-separated list of technologies" />
+                <MudTextField @bind-Value="input.Abstract" Label="Abstract" Variant="Variant.Outlined"
+                              Required="true" Lines="6" />
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@saving">
+                        @(Id is null ? "Submit proposal" : "Save changes")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Href="/student">Cancel</MudButton>
+                </MudStack>
+            </MudStack>
+        </MudForm>
+    }
+</MudStack>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private MudForm? form;
+    private ProposalInput input = new();
+    private List<ResearchArea> researchAreas = new();
+    private bool loading = true;
+    private bool saving = false;
+    private string? loadError;
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        researchAreas = await db.ResearchAreas.OrderBy(r => r.Name).ToListAsync();
+
+        if (Id is int id)
+        {
+            var existing = await db.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (existing is null)
+            {
+                loadError = "Proposal not found.";
+            }
+            else if (existing.OwnerUserId != userId)
+            {
+                loadError = "You do not have permission to edit this proposal.";
+            }
+            else if (existing.Status is not (ProposalStatus.Pending or ProposalStatus.UnderReview))
+            {
+                loadError = "This proposal can no longer be edited.";
+            }
+            else
+            {
+                input = new ProposalInput
+                {
+                    Title = existing.Title,
+                    Abstract = existing.Abstract,
+                    TechnicalStack = existing.TechnicalStack,
+                    ResearchAreaId = existing.ResearchAreaId,
+                };
+            }
+        }
+
+        loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (form is null) return;
+        await form.ValidateAsync();
+        if (!form.IsValid) return;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            if (Id is int id)
+            {
+                var existing = await db.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+                if (existing is null || existing.OwnerUserId != userId) return;
+                if (existing.Status is not (ProposalStatus.Pending or ProposalStatus.UnderReview))
+                {
+                    Snackbar.Add("This proposal can no longer be edited.", Severity.Error);
+                    return;
+                }
+                existing.Title = input.Title;
+                existing.Abstract = input.Abstract;
+                existing.TechnicalStack = input.TechnicalStack;
+                existing.ResearchAreaId = input.ResearchAreaId;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                db.Proposals.Add(new ProjectProposal
+                {
+                    Title = input.Title,
+                    Abstract = input.Abstract,
+                    TechnicalStack = input.TechnicalStack,
+                    ResearchAreaId = input.ResearchAreaId,
+                    OwnerUserId = userId,
+                    Status = ProposalStatus.Pending,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                });
+            }
+            await db.SaveChangesAsync();
+            Snackbar.Add("Proposal saved", Severity.Success);
+            Navigation.NavigateTo("/student");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private sealed class ProposalInput
+    {
+        [Required, StringLength(200)]
+        public string Title { get; set; } = string.Empty;
+
+        [Required]
+        public string Abstract { get; set; } = string.Empty;
+
+        [Required, StringLength(500)]
+        public string TechnicalStack { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Select a research area")]
+        public int ResearchAreaId { get; set; }
+    }
+}

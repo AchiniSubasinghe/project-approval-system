@@ -1,0 +1,80 @@
+@page "/Account/Login"
+@layout Layout.MainLayout
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using project_approval_system.Data
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudText Typo="Typo.h5" Class="mb-4">Sign in</MudText>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="HandleLoginAsync" FormName="login">
+            <DataAnnotationsValidator />
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="Input.Email"
+                              Label="Email"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Email"
+                              Required="true"
+                              UserAttributes="@emailAttrs" />
+                <MudTextField @bind-Value="Input.Password"
+                              Label="Password"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Password"
+                              Required="true"
+                              UserAttributes="@passwordAttrs" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">
+                    Sign in
+                </MudButton>
+            </MudStack>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm] public LoginInput Input { get; set; } = null!;
+
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private string? errorMessage;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private readonly Dictionary<string, object?> emailAttrs = new() { ["name"] = "Input.Email", ["autocomplete"] = "username" };
+    private readonly Dictionary<string, object?> passwordAttrs = new() { ["name"] = "Input.Password", ["autocomplete"] = "current-password" };
+
+    private async Task HandleLoginAsync()
+    {
+        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, isPersistent: false, lockoutOnFailure: false);
+        if (result.Succeeded)
+        {
+            var target = string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl;
+            Navigation.NavigateTo(target, forceLoad: true);
+            return;
+        }
+
+        errorMessage = result.IsLockedOut ? "Account is locked." : "Invalid email or password.";
+    }
+
+    public sealed class LoginInput
+    {
+        [Required, EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required, DataType(DataType.Password)]
+        public string Password { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,130 @@
+@page "/student"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using project_approval_system.Data
+@attribute [Authorize(Roles = Roles.Student)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>My Proposals</PageTitle>
+
+<MudStack Spacing="4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4">My Proposals</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => Navigation.NavigateTo("/student/proposal/new"))">
+            New proposal
+        </MudButton>
+    </MudStack>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (proposals.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">You have not submitted any proposals yet.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="proposals" Hover="true" Dense="false" Striped="true">
+            <HeaderContent>
+                <MudTh>Title</MudTh>
+                <MudTh>Research Area</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Updated</MudTh>
+                <MudTh Style="text-align: right;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Title">@context.Title</MudTd>
+                <MudTd DataLabel="Research Area">@context.ResearchArea.Name</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@StatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Updated">@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd DataLabel="Actions" Style="text-align: right;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                   OnClick="@(() => Navigation.NavigateTo($"/student/proposal/{context.Id}"))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                   Disabled="@(!CanEdit(context.Status))"
+                                   OnClick="@(() => Navigation.NavigateTo($"/student/proposal/{context.Id}/edit"))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                                   Disabled="@(!CanWithdraw(context.Status))"
+                                   OnClick="@(() => WithdrawAsync(context.Id))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    private List<ProjectProposal> proposals = new();
+    private bool loading = true;
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        proposals = await db.Proposals
+            .Include(p => p.ResearchArea)
+            .Where(p => p.OwnerUserId == userId)
+            .OrderByDescending(p => p.UpdatedAt)
+            .ToListAsync();
+        loading = false;
+    }
+
+    private static bool CanEdit(ProposalStatus status) =>
+        status is ProposalStatus.Pending or ProposalStatus.UnderReview;
+
+    private static bool CanWithdraw(ProposalStatus status) =>
+        status is ProposalStatus.Pending or ProposalStatus.UnderReview;
+
+    private static Color StatusColor(ProposalStatus status) => status switch
+    {
+        ProposalStatus.Pending => Color.Info,
+        ProposalStatus.UnderReview => Color.Warning,
+        ProposalStatus.Matched => Color.Success,
+        ProposalStatus.Withdrawn => Color.Dark,
+        _ => Color.Default,
+    };
+
+    private async Task WithdrawAsync(int id)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ContentText"] = "Withdraw this proposal? You cannot undo this.",
+            ["ButtonText"] = "Withdraw",
+            ["Color"] = Color.Error,
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm withdraw", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var proposal = await db.Proposals.FirstOrDefaultAsync(p => p.Id == id && p.OwnerUserId == userId);
+        if (proposal is null) return;
+        if (!CanWithdraw(proposal.Status)) return;
+
+        proposal.Status = ProposalStatus.Withdrawn;
+        proposal.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        Snackbar.Add("Proposal withdrawn", Severity.Success);
+        await LoadAsync();
+    }
+}

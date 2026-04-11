@@ -1,0 +1,13 @@
+@page "/Account/AccessDenied"
+@layout Layout.MainLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+<PageTitle>Access denied</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        You do not have permission to view this page.
+    </MudAlert>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/">Back to home</MudButton>
+</MudContainer>

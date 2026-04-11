@@ -1,0 +1,29 @@
+@page "/Account/Logout"
+@layout Layout.MainLayout
+@using Microsoft.AspNetCore.Identity
+@using project_approval_system.Data
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Sign out</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudText Typo="Typo.h5" Class="mb-4">Sign out</MudText>
+        <MudText Typo="Typo.body1" Class="mb-4">Are you sure you want to sign out?</MudText>
+        <EditForm Model="this" method="post" OnValidSubmit="HandleLogoutAsync" FormName="logout">
+            <MudStack Row="true" Spacing="2">
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Sign out</MudButton>
+                <MudButton Variant="Variant.Outlined" Href="/">Cancel</MudButton>
+            </MudStack>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private async Task HandleLogoutAsync()
+    {
+        await SignInManager.SignOutAsync();
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+}

@@ -8,12 +8,22 @@
         A fair, interest-driven platform for pairing students with final-year project supervisors.
         Students submit proposals anonymously; supervisors select projects that match their expertise.
     </MudText>
-    <MudStack Row="true" Spacing="2">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/Account/Login">
-            Sign in
-        </MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/Account/Register">
-            Create account
-        </MudButton>
-    </MudStack>
+    <AuthorizeView>
+        <Authorized>
+            <MudStack Row="true" Spacing="2">
+                <AuthorizeView Roles="Student" Context="studentCtx">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/student">
+                        Go to My Proposals
+                    </MudButton>
+                </AuthorizeView>
+            </MudStack>
+        </Authorized>
+        <NotAuthorized>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/Account/Login">
+                    Sign in
+                </MudButton>
+            </MudStack>
+        </NotAuthorized>
+    </AuthorizeView>
 </MudStack>

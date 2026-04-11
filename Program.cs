@@ -12,6 +12,10 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
+builder.Services.AddDbContextFactory<ApplicationDbContext>(
+    options => options.UseSqlServer(connectionString),
+    lifetime: ServiceLifetime.Scoped);
+
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
@@ -21,12 +25,21 @@ builder.Services
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/Account/Login";
+    options.LogoutPath = "/Account/Logout";
+    options.AccessDeniedPath = "/Account/AccessDenied";
+});
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("RequireStudent", p => p.RequireRole(Roles.Student));
     options.AddPolicy("RequireSupervisor", p => p.RequireRole(Roles.Supervisor));
     options.AddPolicy("RequireModuleLeader", p => p.RequireRole(Roles.ModuleLeader));
 });
+
+builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddMudServices();
 

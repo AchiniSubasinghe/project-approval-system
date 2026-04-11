@@ -9,6 +9,20 @@
     <MudAppBar Elevation="1">
         <MudText Typo="Typo.h6">Blind-Match PAS</MudText>
         <MudSpacer />
+        <AuthorizeView Context="authCtx">
+            <Authorized>
+                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" Dense="true">
+                    <MudMenuItem>
+                        <MudText Typo="Typo.body2">@authCtx.User.Identity!.Name</MudText>
+                    </MudMenuItem>
+                    <MudDivider />
+                    <MudMenuItem Href="/Account/Logout" Icon="@Icons.Material.Filled.Logout">Sign out</MudMenuItem>
+                </MudMenu>
+            </Authorized>
+            <NotAuthorized>
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/Account/Login">Sign in</MudButton>
+            </NotAuthorized>
+        </AuthorizeView>
     </MudAppBar>
     <MudDrawer Open="true" Variant="DrawerVariant.Responsive" Elevation="1">
         <NavMenu />

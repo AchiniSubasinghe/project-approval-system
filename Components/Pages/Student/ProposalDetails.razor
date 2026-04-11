@@ -1,0 +1,156 @@
+@page "/student/proposal/{Id:int}"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using project_approval_system.Data
+@attribute [Authorize(Roles = Roles.Student)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Proposal</PageTitle>
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (proposal is null)
+{
+    <MudAlert Severity="Severity.Error">Proposal not found or access denied.</MudAlert>
+}
+else
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">@proposal.Title</MudText>
+            <MudChip T="string" Color="@StatusColor(proposal.Status)">@proposal.Status</MudChip>
+        </MudStack>
+
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudStack Spacing="3">
+                <div>
+                    <MudText Typo="Typo.overline">Research Area</MudText>
+                    <MudText Typo="Typo.body1">@proposal.ResearchArea.Name</MudText>
+                </div>
+                <div>
+                    <MudText Typo="Typo.overline">Technical Stack</MudText>
+                    <MudText Typo="Typo.body1">@proposal.TechnicalStack</MudText>
+                </div>
+                <div>
+                    <MudText Typo="Typo.overline">Abstract</MudText>
+                    <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@proposal.Abstract</MudText>
+                </div>
+                <div>
+                    <MudText Typo="Typo.overline">Submitted</MudText>
+                    <MudText Typo="Typo.body2">@proposal.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") (updated @proposal.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudText>
+                </div>
+            </MudStack>
+        </MudPaper>
+
+        @if (proposal.Status == ProposalStatus.Matched && proposal.Match is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+                    Matched supervisor
+                </MudText>
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.body1"><b>@proposal.Match.Supervisor.DisplayName</b></MudText>
+                    <MudText Typo="Typo.body2">@proposal.Match.Supervisor.ContactEmail</MudText>
+                    <MudText Typo="Typo.caption">Confirmed @proposal.Match.ConfirmedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudText>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">Awaiting supervisor match.</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Href="/student">Back</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(!CanEdit(proposal.Status))"
+                       OnClick="@(() => Navigation.NavigateTo($"/student/proposal/{proposal.Id}/edit"))">
+                Edit
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Error"
+                       Disabled="@(!CanWithdraw(proposal.Status))"
+                       OnClick="WithdrawAsync">
+                Withdraw
+            </MudButton>
+        </MudStack>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ProjectProposal? proposal;
+    private bool loading = true;
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        proposal = await db.Proposals
+            .Include(p => p.ResearchArea)
+            .Include(p => p.Match!).ThenInclude(m => m.Supervisor)
+            .FirstOrDefaultAsync(p => p.Id == Id && p.OwnerUserId == userId);
+        loading = false;
+    }
+
+    private static bool CanEdit(ProposalStatus status) =>
+        status is ProposalStatus.Pending or ProposalStatus.UnderReview;
+
+    private static bool CanWithdraw(ProposalStatus status) =>
+        status is ProposalStatus.Pending or ProposalStatus.UnderReview;
+
+    private static Color StatusColor(ProposalStatus status) => status switch
+    {
+        ProposalStatus.Pending => Color.Info,
+        ProposalStatus.UnderReview => Color.Warning,
+        ProposalStatus.Matched => Color.Success,
+        ProposalStatus.Withdrawn => Color.Dark,
+        _ => Color.Default,
+    };
+
+    private async Task WithdrawAsync()
+    {
+        if (proposal is null) return;
+
+        var parameters = new DialogParameters
+        {
+            ["ContentText"] = "Withdraw this proposal? You cannot undo this.",
+            ["ButtonText"] = "Withdraw",
+            ["Color"] = Color.Error,
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm withdraw", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var target = await db.Proposals.FirstOrDefaultAsync(p => p.Id == proposal.Id && p.OwnerUserId == userId);
+        if (target is null) return;
+        if (!CanWithdraw(target.Status)) return;
+
+        target.Status = ProposalStatus.Withdrawn;
+        target.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        Snackbar.Add("Proposal withdrawn", Severity.Success);
+        await LoadAsync();
+    }
+}
