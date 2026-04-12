@@ -11,13 +11,10 @@
         <MudSpacer />
         <AuthorizeView Context="authCtx">
             <Authorized>
-                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" Dense="true">
-                    <MudMenuItem>
-                        <MudText Typo="Typo.body2">@authCtx.User.Identity!.Name</MudText>
-                    </MudMenuItem>
-                    <MudDivider />
-                    <MudMenuItem Href="/Account/Logout" Icon="@Icons.Material.Filled.Logout">Sign out</MudMenuItem>
-                </MudMenu>
+                <MudText Typo="Typo.body2" Class="mr-3">@authCtx.User.Identity!.Name</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/Account/Logout" StartIcon="@Icons.Material.Filled.Logout">
+                    Sign out
+                </MudButton>
             </Authorized>
             <NotAuthorized>
                 <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/Account/Login">Sign in</MudButton>

@@ -61,12 +61,28 @@
         var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, isPersistent: false, lockoutOnFailure: false);
         if (result.Succeeded)
         {
-            var target = string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl;
-            Navigation.NavigateTo(target, forceLoad: true);
+            Navigation.NavigateTo(GetSafeReturnUrl(ReturnUrl), forceLoad: true);
             return;
         }
 
         errorMessage = result.IsLockedOut ? "Account is locked." : "Invalid email or password.";
+    }
+
+    private static string GetSafeReturnUrl(string? returnUrl)
+    {
+        return string.IsNullOrWhiteSpace(returnUrl) || !IsLocalUrl(returnUrl)
+            ? "/"
+            : returnUrl;
+    }
+
+    private static bool IsLocalUrl(string url)
+    {
+        if (url[0] != '/')
+        {
+            return false;
+        }
+
+        return url.Length == 1 || (url[1] != '/' && url[1] != '\\');
     }
 
     public sealed class LoginInput
