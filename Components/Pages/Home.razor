@@ -16,6 +16,16 @@
                         Go to My Proposals
                     </MudButton>
                 </AuthorizeView>
+                <AuthorizeView Roles="Supervisor" Context="supervisorCtx">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/supervisor">
+                        Open Blind Review
+                    </MudButton>
+                </AuthorizeView>
+                <AuthorizeView Roles="ModuleLeader" Context="adminCtx">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/admin">
+                        Open Module Leader Dashboard
+                    </MudButton>
+                </AuthorizeView>
             </MudStack>
         </Authorized>
         <NotAuthorized>

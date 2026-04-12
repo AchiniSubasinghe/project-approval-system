@@ -1,0 +1,157 @@
+@page "/supervisor/proposal/{Id:int}"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using project_approval_system.Services
+@attribute [Authorize(Roles = Roles.Supervisor)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IProjectMatchingService MatchingService
+@inject ISnackbar Snackbar
+
+<PageTitle>Proposal Review</PageTitle>
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (proposal is null)
+{
+    <MudAlert Severity="Severity.Error">Proposal not found or no longer available.</MudAlert>
+}
+else
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h4">@proposal.Title</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@proposal.ResearchArea.Name</MudText>
+            </div>
+            <MudChip T="string" Color="@StatusColor(proposal.Status)">@proposal.Status</MudChip>
+        </MudStack>
+
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudStack Spacing="3">
+                <div>
+                    <MudText Typo="Typo.overline">Technical Stack</MudText>
+                    <MudText Typo="Typo.body1">@proposal.TechnicalStack</MudText>
+                </div>
+                <div>
+                    <MudText Typo="Typo.overline">Abstract</MudText>
+                    <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@proposal.Abstract</MudText>
+                </div>
+            </MudStack>
+        </MudPaper>
+
+        @if (IsMyMatch)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Student identity revealed</MudText>
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.body1"><b>@proposal.Owner.DisplayName</b></MudText>
+                    <MudText Typo="Typo.body2">@proposal.Owner.ContactEmail</MudText>
+                    @if (!string.IsNullOrWhiteSpace(proposal.GroupMembers))
+                    {
+                        <MudText Typo="Typo.overline" Class="mt-2">Group Members</MudText>
+                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@proposal.GroupMembers</MudText>
+                    }
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">Student identity remains hidden until you confirm the match.</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Href="/supervisor">Back</MudButton>
+            @if (CanAct)
+            {
+                @if (hasInterest)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmAsync">Confirm match</MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExpressInterestAsync">Express interest</MudButton>
+                }
+            }
+        </MudStack>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ProjectProposal? proposal;
+    private bool loading = true;
+    private bool hasInterest;
+    private string? userId;
+
+    private bool IsMyMatch => proposal?.Match?.SupervisorId == userId;
+    private bool CanAct => proposal is not null
+        && proposal.Status is ProposalStatus.Pending or ProposalStatus.UnderReview
+        && proposal.Match is null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        proposal = await db.Proposals
+            .Include(p => p.ResearchArea)
+            .Include(p => p.Owner)
+            .Include(p => p.Match)
+            .FirstOrDefaultAsync(p => p.Id == Id);
+
+        if (proposal?.Status == ProposalStatus.Withdrawn)
+        {
+            proposal = null;
+        }
+        else if (proposal?.Status == ProposalStatus.Matched && proposal.Match?.SupervisorId != userId)
+        {
+            proposal = null;
+        }
+
+        hasInterest = await db.SupervisorInterests
+            .AnyAsync(i => i.ProposalId == Id && i.SupervisorId == userId);
+
+        loading = false;
+    }
+
+    private async Task ExpressInterestAsync()
+    {
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var result = await MatchingService.ExpressInterestAsync(userId, Id);
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+        await LoadAsync();
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var result = await MatchingService.ConfirmMatchAsync(userId, Id);
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+        await LoadAsync();
+    }
+
+    private static Color StatusColor(ProposalStatus status) => status switch
+    {
+        ProposalStatus.Pending => Color.Info,
+        ProposalStatus.UnderReview => Color.Warning,
+        ProposalStatus.Matched => Color.Success,
+        _ => Color.Default,
+    };
+}

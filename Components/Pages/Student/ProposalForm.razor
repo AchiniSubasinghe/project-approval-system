@@ -43,6 +43,9 @@
                 <MudTextField @bind-Value="input.TechnicalStack" Label="Technical Stack" Variant="Variant.Outlined"
                               Required="true" MaxLength="500"
                               HelperText="Comma-separated list of technologies" />
+                <MudTextField @bind-Value="input.GroupMembers" Label="Group Members" Variant="Variant.Outlined"
+                              Lines="3" MaxLength="1000"
+                              HelperText="Optional names and emails for members represented by this group lead" />
                 <MudTextField @bind-Value="input.Abstract" Label="Abstract" Variant="Variant.Outlined"
                               Required="true" Lines="6" />
                 <MudStack Row="true" Spacing="2">
@@ -97,6 +100,7 @@
                     Title = existing.Title,
                     Abstract = existing.Abstract,
                     TechnicalStack = existing.TechnicalStack,
+                    GroupMembers = existing.GroupMembers,
                     ResearchAreaId = existing.ResearchAreaId,
                 };
             }
@@ -128,6 +132,7 @@
                 existing.Title = input.Title;
                 existing.Abstract = input.Abstract;
                 existing.TechnicalStack = input.TechnicalStack;
+                existing.GroupMembers = NormalizeOptional(input.GroupMembers);
                 existing.ResearchAreaId = input.ResearchAreaId;
                 existing.UpdatedAt = DateTime.UtcNow;
             }
@@ -138,6 +143,7 @@
                     Title = input.Title,
                     Abstract = input.Abstract,
                     TechnicalStack = input.TechnicalStack,
+                    GroupMembers = NormalizeOptional(input.GroupMembers),
                     ResearchAreaId = input.ResearchAreaId,
                     OwnerUserId = userId,
                     Status = ProposalStatus.Pending,
@@ -166,7 +172,13 @@
         [Required, StringLength(500)]
         public string TechnicalStack { get; set; } = string.Empty;
 
+        [StringLength(1000)]
+        public string? GroupMembers { get; set; }
+
         [Range(1, int.MaxValue, ErrorMessage = "Select a research area")]
         public int ResearchAreaId { get; set; }
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

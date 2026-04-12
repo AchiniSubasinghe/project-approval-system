@@ -3,4 +3,17 @@
     <AuthorizeView Roles="Student">
         <MudNavLink Href="student" Icon="@Icons.Material.Filled.Assignment">My Proposals</MudNavLink>
     </AuthorizeView>
+    <AuthorizeView Roles="Supervisor">
+        <MudNavLink Href="supervisor" Icon="@Icons.Material.Filled.Visibility">Blind Review</MudNavLink>
+        <MudNavLink Href="supervisor/expertise" Icon="@Icons.Material.Filled.Tune">Expertise</MudNavLink>
+        <MudNavLink Href="supervisor/interests" Icon="@Icons.Material.Filled.Bookmark">My Interests</MudNavLink>
+        <MudNavLink Href="supervisor/matches" Icon="@Icons.Material.Filled.Handshake">My Matches</MudNavLink>
+    </AuthorizeView>
+    <AuthorizeView Roles="ModuleLeader">
+        <MudNavLink Href="admin" Icon="@Icons.Material.Filled.Dashboard">Module Leader</MudNavLink>
+        <MudNavLink Href="admin/users" Icon="@Icons.Material.Filled.People">Users</MudNavLink>
+        <MudNavLink Href="admin/research-areas" Icon="@Icons.Material.Filled.Category">Research Areas</MudNavLink>
+        <MudNavLink Href="admin/proposals" Icon="@Icons.Material.Filled.AssignmentTurnedIn">Proposals</MudNavLink>
+        <MudNavLink Href="admin/matches" Icon="@Icons.Material.Filled.Link">Matches</MudNavLink>
+    </AuthorizeView>
 </MudNavMenu>

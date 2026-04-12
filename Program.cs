@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using project_approval_system.Components;
 using project_approval_system.Data;
+using project_approval_system.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,6 +43,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddMudServices();
+builder.Services.AddScoped<IProjectMatchingService, ProjectMatchingService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

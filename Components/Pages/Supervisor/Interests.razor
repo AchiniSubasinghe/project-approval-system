@@ -1,0 +1,110 @@
+@page "/supervisor/interests"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using project_approval_system.Services
+@attribute [Authorize(Roles = Roles.Supervisor)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IProjectMatchingService MatchingService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>My Interests</PageTitle>
+
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h4">My Interests</MudText>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (interests.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">You have not expressed interest in any proposals.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="interests" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Title</MudTh>
+                <MudTh>Research Area</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Expressed</MudTh>
+                <MudTh Style="text-align: right;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Title">@context.Title</MudTd>
+                <MudTd DataLabel="Research Area">@context.ResearchAreaName</MudTd>
+                <MudTd DataLabel="Status">@context.Status</MudTd>
+                <MudTd DataLabel="Expressed">@context.ExpressedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd DataLabel="Actions" Style="text-align: right;">
+                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                               OnClick="@(() => Navigation.NavigateTo($"/supervisor/proposal/{context.ProposalId}"))">
+                        Details
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                               Disabled="@(!context.CanConfirm)"
+                               OnClick="@(() => ConfirmAsync(context.ProposalId))">
+                        Confirm
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    private List<InterestRow> interests = new();
+    private bool loading = true;
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        interests = await db.SupervisorInterests
+            .Include(i => i.Proposal).ThenInclude(p => p.ResearchArea)
+            .Include(i => i.Proposal).ThenInclude(p => p.Match)
+            .Where(i => i.SupervisorId == userId)
+            .OrderByDescending(i => i.ExpressedAt)
+            .Select(i => new InterestRow(
+                i.ProposalId,
+                i.Proposal.Title,
+                i.Proposal.ResearchArea.Name,
+                i.Proposal.Status,
+                i.ExpressedAt,
+                i.Proposal.Status != ProposalStatus.Withdrawn && i.Proposal.Match == null))
+            .ToListAsync();
+
+        loading = false;
+    }
+
+    private async Task ConfirmAsync(int proposalId)
+    {
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var result = await MatchingService.ConfirmMatchAsync(userId, proposalId);
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+        await LoadAsync();
+    }
+
+    private sealed record InterestRow(
+        int ProposalId,
+        string Title,
+        string ResearchAreaName,
+        ProposalStatus Status,
+        DateTime ExpressedAt,
+        bool CanConfirm);
+}

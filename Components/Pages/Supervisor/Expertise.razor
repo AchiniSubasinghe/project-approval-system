@@ -1,0 +1,101 @@
+@page "/supervisor/expertise"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = Roles.Supervisor)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+
+<PageTitle>Expertise</PageTitle>
+
+<MudStack Spacing="4">
+    <div>
+        <MudText Typo="Typo.h4">Expertise Areas</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Choose the research areas you want to review.</MudText>
+    </div>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudStack Spacing="2">
+                @foreach (var area in areas)
+                {
+                    <MudCheckBox T="bool"
+                                 Label="@area.Name"
+                                 Value="@selectedAreaIds.Contains(area.Id)"
+                                 ValueChanged="@((bool selected) => Toggle(area.Id, selected))" />
+                }
+            </MudStack>
+        </MudPaper>
+
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">Save expertise</MudButton>
+            <MudButton Variant="Variant.Outlined" Href="/supervisor">Back</MudButton>
+        </MudStack>
+    }
+</MudStack>
+
+@code {
+    private List<ResearchArea> areas = new();
+    private HashSet<int> selectedAreaIds = new();
+    private bool loading = true;
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        areas = await db.ResearchAreas.OrderBy(r => r.Name).ToListAsync();
+        selectedAreaIds = (await db.SupervisorExpertise
+            .Where(e => e.SupervisorId == userId)
+            .Select(e => e.ResearchAreaId)
+            .ToListAsync()).ToHashSet();
+
+        loading = false;
+    }
+
+    private void Toggle(int areaId, bool selected)
+    {
+        if (selected)
+        {
+            selectedAreaIds.Add(areaId);
+        }
+        else
+        {
+            selectedAreaIds.Remove(areaId);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrEmpty(userId)) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.SupervisorExpertise
+            .Where(e => e.SupervisorId == userId)
+            .ToListAsync();
+        db.SupervisorExpertise.RemoveRange(existing);
+
+        foreach (var areaId in selectedAreaIds)
+        {
+            db.SupervisorExpertise.Add(new SupervisorExpertise
+            {
+                SupervisorId = userId,
+                ResearchAreaId = areaId,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        Snackbar.Add("Expertise updated", Severity.Success);
+    }
+}

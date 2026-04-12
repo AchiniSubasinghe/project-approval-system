@@ -1,0 +1,195 @@
+@page "/supervisor"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using project_approval_system.Services
+@attribute [Authorize(Roles = Roles.Supervisor)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IProjectMatchingService MatchingService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Supervisor Dashboard</PageTitle>
+
+<MudStack Spacing="4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h4">Blind Review</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Review proposals in your expertise areas without student identities.</MudText>
+        </div>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Tune" Href="/supervisor/expertise">
+            Manage expertise
+        </MudButton>
+    </MudStack>
+
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline">Capacity</MudText>
+                <MudText Typo="Typo.h5">@currentMatches / @maxCapacity</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline">Expertise Areas</MudText>
+                <MudText Typo="Typo.h5">@expertiseCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline">Available Projects</MudText>
+                <MudText Typo="Typo.h5">@availableProposals.Count</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (expertiseCount == 0)
+    {
+        <MudAlert Severity="Severity.Warning">Select at least one expertise area before reviewing proposals.</MudAlert>
+    }
+    else if (availableProposals.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No unmatched proposals are available in your expertise areas.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="availableProposals" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Title</MudTh>
+                <MudTh>Research Area</MudTh>
+                <MudTh>Technical Stack</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="text-align: right;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Title">@context.Title</MudTd>
+                <MudTd DataLabel="Research Area">@context.ResearchAreaName</MudTd>
+                <MudTd DataLabel="Technical Stack">@context.TechnicalStack</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@StatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions" Style="text-align: right;">
+                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                               OnClick="@(() => Navigation.NavigateTo($"/supervisor/proposal/{context.Id}"))">
+                        Details
+                    </MudButton>
+                    @if (context.HasInterest)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                   Disabled="@(!HasCapacity)"
+                                   OnClick="@(() => ConfirmAsync(context.Id))">
+                            Confirm
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => ExpressInterestAsync(context.Id))">
+                            Express interest
+                        </MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    private List<ProposalRow> availableProposals = new();
+    private bool loading = true;
+    private string? userId;
+    private int currentMatches;
+    private int maxCapacity = ApplicationUser.DefaultMaxProjectCapacity;
+    private int expertiseCount;
+
+    private bool HasCapacity => currentMatches < maxCapacity;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var supervisor = await db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        maxCapacity = supervisor?.MaxProjectCapacity ?? ApplicationUser.DefaultMaxProjectCapacity;
+        currentMatches = await db.Matches.CountAsync(m => m.SupervisorId == userId);
+
+        var expertiseAreaIds = await db.SupervisorExpertise
+            .Where(e => e.SupervisorId == userId)
+            .Select(e => e.ResearchAreaId)
+            .ToListAsync();
+        expertiseCount = expertiseAreaIds.Count;
+
+        if (expertiseAreaIds.Count == 0)
+        {
+            availableProposals.Clear();
+            loading = false;
+            return;
+        }
+
+        availableProposals = await db.Proposals
+            .Include(p => p.ResearchArea)
+            .Include(p => p.Interests)
+            .Where(p => expertiseAreaIds.Contains(p.ResearchAreaId))
+            .Where(p => p.Status == ProposalStatus.Pending || p.Status == ProposalStatus.UnderReview)
+            .Where(p => p.Match == null)
+            .OrderByDescending(p => p.UpdatedAt)
+            .Select(p => new ProposalRow(
+                p.Id,
+                p.Title,
+                p.ResearchArea.Name,
+                p.TechnicalStack,
+                p.Status,
+                p.Interests.Any(i => i.SupervisorId == userId)))
+            .ToListAsync();
+
+        loading = false;
+    }
+
+    private async Task ExpressInterestAsync(int proposalId)
+    {
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var result = await MatchingService.ExpressInterestAsync(userId, proposalId);
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+        await LoadAsync();
+    }
+
+    private async Task ConfirmAsync(int proposalId)
+    {
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var result = await MatchingService.ConfirmMatchAsync(userId, proposalId);
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+        await LoadAsync();
+    }
+
+    private static Color StatusColor(ProposalStatus status) => status switch
+    {
+        ProposalStatus.Pending => Color.Info,
+        ProposalStatus.UnderReview => Color.Warning,
+        _ => Color.Default,
+    };
+
+    private sealed record ProposalRow(
+        int Id,
+        string Title,
+        string ResearchAreaName,
+        string TechnicalStack,
+        ProposalStatus Status,
+        bool HasInterest);
+}

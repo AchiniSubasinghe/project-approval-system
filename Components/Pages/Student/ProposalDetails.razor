@@ -41,6 +41,13 @@ else
                     <MudText Typo="Typo.overline">Technical Stack</MudText>
                     <MudText Typo="Typo.body1">@proposal.TechnicalStack</MudText>
                 </div>
+                @if (!string.IsNullOrWhiteSpace(proposal.GroupMembers))
+                {
+                    <div>
+                        <MudText Typo="Typo.overline">Group Members</MudText>
+                        <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@proposal.GroupMembers</MudText>
+                    </div>
+                }
                 <div>
                     <MudText Typo="Typo.overline">Abstract</MudText>
                     <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@proposal.Abstract</MudText>

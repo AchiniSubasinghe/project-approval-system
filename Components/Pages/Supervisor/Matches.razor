@@ -1,0 +1,84 @@
+@page "/supervisor/matches"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = Roles.Supervisor)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>My Matches</PageTitle>
+
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h4">My Matches</MudText>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (matches.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">You have not confirmed any matches.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="matches" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Project</MudTh>
+                <MudTh>Student Lead</MudTh>
+                <MudTh>Contact</MudTh>
+                <MudTh>Confirmed</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Project">
+                    <MudText Typo="Typo.body1">@context.ProjectTitle</MudText>
+                    <MudText Typo="Typo.caption">@context.ResearchAreaName</MudText>
+                </MudTd>
+                <MudTd DataLabel="Student Lead">@context.StudentName</MudTd>
+                <MudTd DataLabel="Contact">@context.StudentContact</MudTd>
+                <MudTd DataLabel="Confirmed">@context.ConfirmedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    private List<MatchRow> matches = new();
+    private bool loading = true;
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        matches = await db.Matches
+            .Include(m => m.Proposal).ThenInclude(p => p.ResearchArea)
+            .Include(m => m.Proposal).ThenInclude(p => p.Owner)
+            .Where(m => m.SupervisorId == userId)
+            .OrderByDescending(m => m.ConfirmedAt)
+            .Select(m => new MatchRow(
+                m.Proposal.Title,
+                m.Proposal.ResearchArea.Name,
+                m.Proposal.Owner.DisplayName,
+                m.Proposal.Owner.ContactEmail,
+                m.ConfirmedAt))
+            .ToListAsync();
+        loading = false;
+    }
+
+    private sealed record MatchRow(
+        string ProjectTitle,
+        string ResearchAreaName,
+        string StudentName,
+        string StudentContact,
+        DateTime ConfirmedAt);
+}

@@ -1,0 +1,218 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = Roles.ModuleLeader)]
+@inject UserManager<ApplicationUser> UserManager
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
+
+<PageTitle>Users</PageTitle>
+
+<MudStack Spacing="4">
+    <div>
+        <MudText Typo="Typo.h4">User Management</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Create student, supervisor, and module leader accounts.</MudText>
+    </div>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-3">Create account</MudText>
+        <MudForm @ref="form">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="input.Email" Label="Email" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="input.DisplayName" Label="Display Name" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="input.ContactEmail" Label="Contact Email" Variant="Variant.Outlined"
+                                  HelperText="Defaults to the login email if left blank" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSelect T="string" Label="Role" Variant="Variant.Outlined" @bind-Value="input.Role" Required="true">
+                        <MudSelectItem T="string" Value="@Roles.Student">Student</MudSelectItem>
+                        <MudSelectItem T="string" Value="@Roles.Supervisor">Supervisor</MudSelectItem>
+                        <MudSelectItem T="string" Value="@Roles.ModuleLeader">Module Leader</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="int" @bind-Value="input.MaxProjectCapacity" Label="Supervisor Capacity"
+                                     Variant="Variant.Outlined" Min="1" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="input.Password" Label="Temporary Password" Variant="Variant.Outlined"
+                                  InputType="InputType.Password" Required="true" />
+                </MudItem>
+            </MudGrid>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" OnClick="CreateUserAsync" Disabled="@creating">
+                Create user
+            </MudButton>
+        </MudForm>
+    </MudPaper>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudTable Items="users" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Roles</MudTh>
+                <MudTh>Capacity</MudTh>
+                <MudTh Style="text-align: right;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.DisplayName</MudTd>
+                <MudTd DataLabel="Email">@context.Email</MudTd>
+                <MudTd DataLabel="Roles">@context.Roles</MudTd>
+                <MudTd DataLabel="Capacity">
+                    @if (context.IsSupervisor)
+                    {
+                        <MudNumericField T="int"
+                                         Value="@context.MaxProjectCapacity"
+                                         ValueChanged="@((int value) => context.MaxProjectCapacity = value)"
+                                         Min="1" />
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2">N/A</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions" Style="text-align: right;">
+                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                               Disabled="@(!context.IsSupervisor)"
+                               OnClick="@(() => SaveCapacityAsync(context))">
+                        Save capacity
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    private MudForm? form;
+    private CreateUserInput input = new();
+    private List<UserRow> users = new();
+    private bool loading = true;
+    private bool creating;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var allUsers = await UserManager.Users.OrderBy(u => u.DisplayName).ToListAsync();
+        var rows = new List<UserRow>();
+        foreach (var user in allUsers)
+        {
+            var roles = await UserManager.GetRolesAsync(user);
+            rows.Add(new UserRow
+            {
+                Id = user.Id,
+                DisplayName = user.DisplayName,
+                Email = user.Email ?? string.Empty,
+                Roles = string.Join(", ", roles),
+                IsSupervisor = roles.Contains(Roles.Supervisor),
+                MaxProjectCapacity = user.MaxProjectCapacity,
+            });
+        }
+
+        users = rows;
+        loading = false;
+    }
+
+    private async Task CreateUserAsync()
+    {
+        if (form is null) return;
+
+        await form.ValidateAsync();
+        if (!form.IsValid) return;
+
+        creating = true;
+        try
+        {
+            var user = new ApplicationUser
+            {
+                UserName = input.Email,
+                Email = input.Email,
+                EmailConfirmed = true,
+                DisplayName = input.DisplayName,
+                ContactEmail = string.IsNullOrWhiteSpace(input.ContactEmail) ? input.Email : input.ContactEmail.Trim(),
+                MaxProjectCapacity = Math.Max(1, input.MaxProjectCapacity),
+            };
+
+            var result = await UserManager.CreateAsync(user, input.Password);
+            if (!result.Succeeded)
+            {
+                Snackbar.Add(string.Join(" ", result.Errors.Select(e => e.Description)), Severity.Error);
+                return;
+            }
+
+            var roleResult = await UserManager.AddToRoleAsync(user, input.Role);
+            if (!roleResult.Succeeded)
+            {
+                Snackbar.Add(string.Join(" ", roleResult.Errors.Select(e => e.Description)), Severity.Error);
+                return;
+            }
+
+            Snackbar.Add("User created", Severity.Success);
+            input = new();
+            await LoadAsync();
+        }
+        finally
+        {
+            creating = false;
+        }
+    }
+
+    private async Task SaveCapacityAsync(UserRow row)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == row.Id);
+        if (user is null) return;
+
+        user.MaxProjectCapacity = Math.Max(1, row.MaxProjectCapacity);
+        await db.SaveChangesAsync();
+        Snackbar.Add("Capacity updated", Severity.Success);
+        await LoadAsync();
+    }
+
+    private sealed class CreateUserInput
+    {
+        [Required, EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [EmailAddress]
+        public string? ContactEmail { get; set; }
+
+        [Required]
+        public string Role { get; set; } = Roles.Student;
+
+        [Range(1, 100)]
+        public int MaxProjectCapacity { get; set; } = ApplicationUser.DefaultMaxProjectCapacity;
+
+        [Required]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    private sealed class UserRow
+    {
+        public string Id { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Roles { get; set; } = string.Empty;
+        public bool IsSupervisor { get; set; }
+        public int MaxProjectCapacity { get; set; }
+    }
+}

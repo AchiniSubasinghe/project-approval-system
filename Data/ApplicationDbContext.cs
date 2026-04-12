@@ -24,6 +24,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .HasIndex(r => r.Name)
             .IsUnique();
 
+        builder.Entity<ApplicationUser>()
+            .Property(u => u.MaxProjectCapacity)
+            .HasDefaultValue(ApplicationUser.DefaultMaxProjectCapacity);
+
         builder.Entity<SupervisorExpertise>()
             .HasKey(e => new { e.SupervisorId, e.ResearchAreaId });
 

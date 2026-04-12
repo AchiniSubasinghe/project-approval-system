@@ -1,0 +1,89 @@
+@page "/admin"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = Roles.ModuleLeader)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<PageTitle>Module Leader</PageTitle>
+
+<MudStack Spacing="4">
+    <div>
+        <MudText Typo="Typo.h4">Module Leader Dashboard</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Oversee proposals, matches, research areas, and user access.</MudText>
+    </div>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Proposals</MudText>
+                    <MudText Typo="Typo.h5">@proposalCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Under Review</MudText>
+                    <MudText Typo="Typo.h5">@underReviewCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Matched</MudText>
+                    <MudText Typo="Typo.h5">@matchedCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Research Areas</MudText>
+                    <MudText Typo="Typo.h5">@researchAreaCount</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-3">Allocation</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/admin/proposals">Review proposals</MudButton>
+                        <MudButton Variant="Variant.Outlined" Href="/admin/matches">View matches</MudButton>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-3">Configuration</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/admin/users">Manage users</MudButton>
+                        <MudButton Variant="Variant.Outlined" Href="/admin/research-areas">Research areas</MudButton>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudStack>
+
+@code {
+    private bool loading = true;
+    private int proposalCount;
+    private int underReviewCount;
+    private int matchedCount;
+    private int researchAreaCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        proposalCount = await db.Proposals.CountAsync();
+        underReviewCount = await db.Proposals.CountAsync(p => p.Status == ProposalStatus.UnderReview);
+        matchedCount = await db.Proposals.CountAsync(p => p.Status == ProposalStatus.Matched);
+        researchAreaCount = await db.ResearchAreas.CountAsync();
+        loading = false;
+    }
+}

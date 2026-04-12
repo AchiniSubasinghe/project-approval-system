@@ -1,0 +1,175 @@
+@page "/admin/proposals"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using project_approval_system.Services
+@attribute [Authorize(Roles = Roles.ModuleLeader)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject IProjectMatchingService MatchingService
+@inject ISnackbar Snackbar
+
+<PageTitle>Proposal Oversight</PageTitle>
+
+<MudStack Spacing="4">
+    <div>
+        <MudText Typo="Typo.h4">Proposal Oversight</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Monitor proposal status and assign unmatched proposals within supervisor capacity.</MudText>
+    </div>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudTable Items="proposals" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Proposal</MudTh>
+                <MudTh>Student</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Interests</MudTh>
+                <MudTh>Supervisor</MudTh>
+                <MudTh Style="text-align: right;">Assign</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Proposal">
+                    <MudText Typo="Typo.body1">@context.Title</MudText>
+                    <MudText Typo="Typo.caption">@context.ResearchAreaName</MudText>
+                </MudTd>
+                <MudTd DataLabel="Student">
+                    <MudText Typo="Typo.body2">@context.OwnerName</MudText>
+                    <MudText Typo="Typo.caption">@context.OwnerContact</MudText>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@context.Status</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Interests">@context.InterestCount</MudTd>
+                <MudTd DataLabel="Supervisor">@context.MatchedSupervisor</MudTd>
+                <MudTd DataLabel="Assign" Style="text-align: right; min-width: 280px;">
+                    @if (context.CanAssign)
+                    {
+                        <MudStack Row="true" Spacing="1" Justify="Justify.FlexEnd">
+                            <MudSelect T="string" Placeholder="Supervisor"
+                                       Value="@context.SelectedSupervisorId"
+                                       ValueChanged="@((string value) => context.SelectedSupervisorId = value)">
+                                @foreach (var supervisor in supervisors)
+                                {
+                                    <MudSelectItem T="string" Value="@supervisor.Id">@supervisor.Label</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       Disabled="@string.IsNullOrWhiteSpace(context.SelectedSupervisorId)"
+                                       OnClick="@(() => AssignAsync(context))">
+                                Assign
+                            </MudButton>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2">No action</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    private List<ProposalRow> proposals = new();
+    private List<SupervisorOption> supervisors = new();
+    private bool loading = true;
+    private string? moduleLeaderId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        moduleLeaderId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await LoadSupervisorsAsync();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        proposals = await db.Proposals
+            .Include(p => p.ResearchArea)
+            .Include(p => p.Owner)
+            .Include(p => p.Interests)
+            .Include(p => p.Match!).ThenInclude(m => m.Supervisor)
+            .OrderByDescending(p => p.UpdatedAt)
+            .Select(p => new ProposalRow
+            {
+                Id = p.Id,
+                Title = p.Title,
+                ResearchAreaName = p.ResearchArea.Name,
+                OwnerName = p.Owner.DisplayName,
+                OwnerContact = p.Owner.ContactEmail,
+                Status = p.Status,
+                InterestCount = p.Interests.Count,
+                MatchedSupervisor = p.Match == null ? "-" : p.Match.Supervisor.DisplayName,
+                CanAssign = p.Status != ProposalStatus.Withdrawn && p.Status != ProposalStatus.Matched && p.Match == null,
+            })
+            .ToListAsync();
+
+        loading = false;
+    }
+
+    private async Task LoadSupervisorsAsync()
+    {
+        var supervisorUsers = await UserManager.GetUsersInRoleAsync(Roles.Supervisor);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var counts = await db.Matches
+            .GroupBy(m => m.SupervisorId)
+            .Select(g => new { SupervisorId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SupervisorId, x => x.Count);
+
+        supervisors = supervisorUsers
+            .OrderBy(u => u.DisplayName)
+            .Select(u => new SupervisorOption(
+                u.Id,
+                $"{u.DisplayName} ({counts.GetValueOrDefault(u.Id)}/{u.MaxProjectCapacity})"))
+            .ToList();
+    }
+
+    private async Task AssignAsync(ProposalRow row)
+    {
+        if (string.IsNullOrEmpty(moduleLeaderId) || string.IsNullOrWhiteSpace(row.SelectedSupervisorId)) return;
+
+        var result = await MatchingService.AdminAssignAsync(moduleLeaderId, row.Id, row.SelectedSupervisorId);
+        Snackbar.Add(result.Message, result.Succeeded ? Severity.Success : Severity.Error);
+        await LoadAsync();
+    }
+
+    private static Color StatusColor(ProposalStatus status) => status switch
+    {
+        ProposalStatus.Pending => Color.Info,
+        ProposalStatus.UnderReview => Color.Warning,
+        ProposalStatus.Matched => Color.Success,
+        ProposalStatus.Withdrawn => Color.Dark,
+        _ => Color.Default,
+    };
+
+    private sealed record SupervisorOption(string Id, string Label);
+
+    private sealed class ProposalRow
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string ResearchAreaName { get; set; } = string.Empty;
+        public string OwnerName { get; set; } = string.Empty;
+        public string OwnerContact { get; set; } = string.Empty;
+        public ProposalStatus Status { get; set; }
+        public int InterestCount { get; set; }
+        public string MatchedSupervisor { get; set; } = "-";
+        public bool CanAssign { get; set; }
+        public string SelectedSupervisorId { get; set; } = string.Empty;
+    }
+}

@@ -33,6 +33,7 @@ public static class DbInitializer
         {
             await SeedDevStudentAsync(config, userManager, logger);
             await SeedResearchAreasAsync(config, db, logger);
+            await SeedDevSupervisorAsync(config, userManager, db, logger);
         }
     }
 
@@ -129,5 +130,69 @@ public static class DbInitializer
 
         await db.SaveChangesAsync();
         logger.LogInformation("Seeded {Count} research areas", names.Length);
+    }
+
+    private static async Task SeedDevSupervisorAsync(
+        IConfiguration config,
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext db,
+        ILogger logger)
+    {
+        var email = config["IdentityDefaults:DevSupervisor:Email"];
+        var password = config["IdentityDefaults:DevSupervisor:Password"];
+        var displayName = config["IdentityDefaults:DevSupervisor:DisplayName"] ?? "Dev Supervisor";
+
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            return;
+        }
+
+        var user = await userManager.FindByEmailAsync(email);
+        if (user is null)
+        {
+            user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                EmailConfirmed = true,
+                DisplayName = displayName,
+                ContactEmail = email,
+                MaxProjectCapacity = ApplicationUser.DefaultMaxProjectCapacity,
+            };
+
+            var result = await userManager.CreateAsync(user, password);
+            if (!result.Succeeded)
+            {
+                logger.LogError("Failed to create dev Supervisor: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
+                return;
+            }
+
+            await userManager.AddToRoleAsync(user, Roles.Supervisor);
+            logger.LogInformation("Seeded dev Supervisor {Email}", email);
+        }
+
+        var existingExpertise = await db.SupervisorExpertise
+            .AnyAsync(e => e.SupervisorId == user.Id);
+        if (existingExpertise)
+        {
+            return;
+        }
+
+        var areaNames = config.GetSection("IdentityDefaults:DevSupervisor:Expertise").Get<string[]>()
+            ?? ["Artificial Intelligence", "Web Development"];
+        var areas = await db.ResearchAreas
+            .Where(r => areaNames.Contains(r.Name))
+            .ToListAsync();
+
+        foreach (var area in areas)
+        {
+            db.SupervisorExpertise.Add(new SupervisorExpertise
+            {
+                SupervisorId = user.Id,
+                ResearchAreaId = area.Id,
+            });
+        }
+
+        await db.SaveChangesAsync();
     }
 }

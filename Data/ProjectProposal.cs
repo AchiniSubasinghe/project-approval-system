@@ -17,6 +17,9 @@ public class ProjectProposal
     [MaxLength(500)]
     public string TechnicalStack { get; set; } = string.Empty;
 
+    [MaxLength(1000)]
+    public string? GroupMembers { get; set; }
+
     public int ResearchAreaId { get; set; }
     public ResearchArea ResearchArea { get; set; } = null!;
 

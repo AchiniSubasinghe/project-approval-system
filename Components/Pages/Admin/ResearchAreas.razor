@@ -1,0 +1,156 @@
+@page "/admin/research-areas"
+@rendermode InteractiveServer
+@layout Layout.MainLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = Roles.ModuleLeader)]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
+
+<PageTitle>Research Areas</PageTitle>
+
+<MudStack Spacing="4">
+    <div>
+        <MudText Typo="Typo.h4">Research Areas</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Maintain the proposal categories available to students and supervisors.</MudText>
+    </div>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End">
+            <MudTextField @bind-Value="newAreaName" Label="New Research Area" Variant="Variant.Outlined" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">Add area</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @if (loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudTable Items="areas" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Usage</MudTh>
+                <MudTh Style="text-align: right;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">
+                    <MudTextField @bind-Value="context.Name" />
+                </MudTd>
+                <MudTd DataLabel="Usage">@context.UsageCount</MudTd>
+                <MudTd DataLabel="Actions" Style="text-align: right;">
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => RenameAsync(context))">Save</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                               Disabled="@(context.UsageCount > 0)"
+                               OnClick="@(() => DeleteAsync(context.Id))">
+                        Delete
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    private List<AreaRow> areas = new();
+    private string? newAreaName;
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        areas = await db.ResearchAreas
+            .OrderBy(r => r.Name)
+            .Select(r => new AreaRow(
+                r.Id,
+                r.Name,
+                r.Proposals.Count + r.Supervisors.Count))
+            .ToListAsync();
+        loading = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        var name = Normalize(newAreaName);
+        if (name is null)
+        {
+            Snackbar.Add("Enter a research area name.", Severity.Error);
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var exists = await db.ResearchAreas.AnyAsync(r => r.Name == name);
+        if (exists)
+        {
+            Snackbar.Add("Research area already exists.", Severity.Error);
+            return;
+        }
+
+        db.ResearchAreas.Add(new ResearchArea { Name = name, CreatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        newAreaName = null;
+        Snackbar.Add("Research area added", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task RenameAsync(AreaRow row)
+    {
+        var name = Normalize(row.Name);
+        if (name is null)
+        {
+            Snackbar.Add("Research area name cannot be empty.", Severity.Error);
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var duplicate = await db.ResearchAreas.AnyAsync(r => r.Id != row.Id && r.Name == name);
+        if (duplicate)
+        {
+            Snackbar.Add("Research area already exists.", Severity.Error);
+            return;
+        }
+
+        var area = await db.ResearchAreas.FirstOrDefaultAsync(r => r.Id == row.Id);
+        if (area is null) return;
+
+        area.Name = name;
+        await db.SaveChangesAsync();
+        Snackbar.Add("Research area updated", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var area = await db.ResearchAreas
+            .Include(r => r.Proposals)
+            .Include(r => r.Supervisors)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (area is null) return;
+
+        if (area.Proposals.Count > 0 || area.Supervisors.Count > 0)
+        {
+            Snackbar.Add("Areas in use cannot be deleted.", Severity.Error);
+            return;
+        }
+
+        db.ResearchAreas.Remove(area);
+        await db.SaveChangesAsync();
+        Snackbar.Add("Research area deleted", Severity.Success);
+        await LoadAsync();
+    }
+
+    private static string? Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private sealed class AreaRow(int id, string name, int usageCount)
+    {
+        public int Id { get; } = id;
+        public string Name { get; set; } = name;
+        public int UsageCount { get; } = usageCount;
+    }
+}
