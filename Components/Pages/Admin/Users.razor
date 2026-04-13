@@ -1,12 +1,12 @@
 @page "/admin/users"
-@rendermode InteractiveServer
 @layout Layout.MainLayout
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.DependencyInjection
 @attribute [Authorize(Roles = Roles.ModuleLeader)]
-@inject UserManager<ApplicationUser> UserManager
+@inject IServiceScopeFactory ScopeFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Users</PageTitle>
@@ -108,11 +108,13 @@
     private async Task LoadAsync()
     {
         loading = true;
-        var allUsers = await UserManager.Users.OrderBy(u => u.DisplayName).ToListAsync();
+        using var scope = ScopeFactory.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var allUsers = await userManager.Users.OrderBy(u => u.DisplayName).ToListAsync();
         var rows = new List<UserRow>();
         foreach (var user in allUsers)
         {
-            var roles = await UserManager.GetRolesAsync(user);
+            var roles = await userManager.GetRolesAsync(user);
             rows.Add(new UserRow
             {
                 Id = user.Id,
@@ -138,6 +140,8 @@
         creating = true;
         try
         {
+            using var scope = ScopeFactory.CreateScope();
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
             var user = new ApplicationUser
             {
                 UserName = input.Email,
@@ -148,14 +152,14 @@
                 MaxProjectCapacity = Math.Max(1, input.MaxProjectCapacity),
             };
 
-            var result = await UserManager.CreateAsync(user, input.Password);
+            var result = await userManager.CreateAsync(user, input.Password);
             if (!result.Succeeded)
             {
                 Snackbar.Add(string.Join(" ", result.Errors.Select(e => e.Description)), Severity.Error);
                 return;
             }
 
-            var roleResult = await UserManager.AddToRoleAsync(user, input.Role);
+            var roleResult = await userManager.AddToRoleAsync(user, input.Role);
             if (!roleResult.Succeeded)
             {
                 Snackbar.Add(string.Join(" ", roleResult.Errors.Select(e => e.Description)), Severity.Error);
@@ -174,11 +178,13 @@
 
     private async Task SaveCapacityAsync(UserRow row)
     {
-        var user = await UserManager.FindByIdAsync(row.Id);
+        using var scope = ScopeFactory.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByIdAsync(row.Id);
         if (user is null) return;
 
         user.MaxProjectCapacity = Math.Max(1, row.MaxProjectCapacity);
-        var result = await UserManager.UpdateAsync(user);
+        var result = await userManager.UpdateAsync(user);
         if (!result.Succeeded)
         {
             Snackbar.Add(string.Join(" ", result.Errors.Select(e => e.Description)), Severity.Error);

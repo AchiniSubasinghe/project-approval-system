@@ -1,16 +1,16 @@
 @page "/admin/proposals"
-@rendermode InteractiveServer
 @layout Layout.MainLayout
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.DependencyInjection
 @using project_approval_system.Services
 @attribute [Authorize(Roles = Roles.ModuleLeader)]
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthStateProvider
-@inject UserManager<ApplicationUser> UserManager
+@inject IServiceScopeFactory ScopeFactory
 @inject IProjectMatchingService MatchingService
 @inject ISnackbar Snackbar
 
@@ -124,7 +124,9 @@
 
     private async Task LoadSupervisorsAsync()
     {
-        var supervisorUsers = await UserManager.GetUsersInRoleAsync(Roles.Supervisor);
+        using var scope = ScopeFactory.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var supervisorUsers = await userManager.GetUsersInRoleAsync(Roles.Supervisor);
         await using var db = await DbFactory.CreateDbContextAsync();
         var counts = await db.Matches
             .GroupBy(m => m.SupervisorId)
