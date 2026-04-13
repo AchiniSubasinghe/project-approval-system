@@ -7,7 +7,6 @@
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Roles = Roles.ModuleLeader)]
 @inject UserManager<ApplicationUser> UserManager
-@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Users</PageTitle>
@@ -175,12 +174,17 @@
 
     private async Task SaveCapacityAsync(UserRow row)
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == row.Id);
+        var user = await UserManager.FindByIdAsync(row.Id);
         if (user is null) return;
 
         user.MaxProjectCapacity = Math.Max(1, row.MaxProjectCapacity);
-        await db.SaveChangesAsync();
+        var result = await UserManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            Snackbar.Add(string.Join(" ", result.Errors.Select(e => e.Description)), Severity.Error);
+            return;
+        }
+
         Snackbar.Add("Capacity updated", Severity.Success);
         await LoadAsync();
     }

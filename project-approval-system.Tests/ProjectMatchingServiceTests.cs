@@ -25,6 +25,22 @@ public sealed class ProjectMatchingServiceTests
     }
 
     [Fact]
+    public async Task ExpressInterest_rejects_proposal_outside_supervisor_expertise()
+    {
+        await using var app = await TestApp.CreateAsync();
+        var supervisor = await app.CreateUserAsync("outside@pas.local", Roles.Supervisor, grantDefaultExpertise: false);
+        var proposal = await app.CreateProposalAsync();
+
+        var result = await app.MatchingService.ExpressInterestAsync(supervisor.Id, proposal.Id);
+
+        Assert.False(result.Succeeded);
+        await using var db = await app.CreateDbContextAsync();
+        var savedProposal = await db.Proposals.Include(p => p.Interests).SingleAsync(p => p.Id == proposal.Id);
+        Assert.Equal(ProposalStatus.Pending, savedProposal.Status);
+        Assert.Empty(savedProposal.Interests);
+    }
+
+    [Fact]
     public async Task Duplicate_interest_is_rejected()
     {
         await using var app = await TestApp.CreateAsync();
@@ -47,6 +63,32 @@ public sealed class ProjectMatchingServiceTests
         Assert.False(result.Succeeded);
         await using var db = await app.CreateDbContextAsync();
         Assert.Empty(await db.Matches.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Confirm_rejects_proposal_outside_supervisor_expertise()
+    {
+        await using var app = await TestApp.CreateAsync();
+        var supervisor = await app.CreateUserAsync("outside@pas.local", Roles.Supervisor, grantDefaultExpertise: false);
+        var proposal = await app.CreateProposalAsync();
+
+        await using (var setupDb = await app.CreateDbContextAsync())
+        {
+            setupDb.SupervisorInterests.Add(new SupervisorInterest
+            {
+                ProposalId = proposal.Id,
+                SupervisorId = supervisor.Id,
+                ExpressedAt = DateTime.UtcNow,
+            });
+            await setupDb.SaveChangesAsync();
+        }
+
+        var result = await app.MatchingService.ConfirmMatchAsync(supervisor.Id, proposal.Id);
+
+        Assert.False(result.Succeeded);
+        await using var db = await app.CreateDbContextAsync();
+        Assert.Empty(await db.Matches.ToListAsync());
+        Assert.Equal(ProposalStatus.Pending, await db.Proposals.Where(p => p.Id == proposal.Id).Select(p => p.Status).SingleAsync());
     }
 
     [Fact]
@@ -86,6 +128,33 @@ public sealed class ProjectMatchingServiceTests
         Assert.False(second.Succeeded);
         await using var db = await app.CreateDbContextAsync();
         Assert.Single(await db.Matches.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ExpressInterest_rejects_existing_match_without_changing_status()
+    {
+        await using var app = await TestApp.CreateAsync();
+        var proposal = await app.CreateProposalAsync(status: ProposalStatus.Matched);
+
+        await using (var setupDb = await app.CreateDbContextAsync())
+        {
+            setupDb.Matches.Add(new Match
+            {
+                ProposalId = proposal.Id,
+                SupervisorId = app.Supervisor.Id,
+                ConfirmedAt = DateTime.UtcNow,
+            });
+            await setupDb.SaveChangesAsync();
+        }
+
+        var result = await app.MatchingService.ExpressInterestAsync(app.Supervisor.Id, proposal.Id);
+
+        Assert.False(result.Succeeded);
+        await using var db = await app.CreateDbContextAsync();
+        var savedProposal = await db.Proposals.Include(p => p.Interests).Include(p => p.Match).SingleAsync(p => p.Id == proposal.Id);
+        Assert.Equal(ProposalStatus.Matched, savedProposal.Status);
+        Assert.Empty(savedProposal.Interests);
+        Assert.NotNull(savedProposal.Match);
     }
 
     [Fact]
@@ -187,7 +256,8 @@ public sealed class ProjectMatchingServiceTests
         public async Task<ApplicationUser> CreateUserAsync(
             string email,
             string role,
-            int capacity = ApplicationUser.DefaultMaxProjectCapacity)
+            int capacity = ApplicationUser.DefaultMaxProjectCapacity,
+            bool grantDefaultExpertise = true)
         {
             var userManager = provider.GetRequiredService<UserManager<ApplicationUser>>();
             var user = new ApplicationUser
@@ -205,6 +275,18 @@ public sealed class ProjectMatchingServiceTests
 
             var addRole = await userManager.AddToRoleAsync(user, role);
             Assert.True(addRole.Succeeded, string.Join(" ", addRole.Errors.Select(e => e.Description)));
+
+            if (role == Roles.Supervisor && grantDefaultExpertise)
+            {
+                await using var db = await CreateDbContextAsync();
+                db.SupervisorExpertise.Add(new SupervisorExpertise
+                {
+                    SupervisorId = user.Id,
+                    ResearchAreaId = ResearchArea.Id,
+                });
+                await db.SaveChangesAsync();
+            }
+
             return user;
         }
 

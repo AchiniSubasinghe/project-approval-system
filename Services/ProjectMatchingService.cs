@@ -17,6 +17,8 @@ public sealed class ProjectMatchingService(
         }
 
         await using var db = await dbFactory.CreateDbContextAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
         var proposal = await db.Proposals
             .Include(p => p.Match)
             .FirstOrDefaultAsync(p => p.Id == proposalId);
@@ -34,6 +36,11 @@ public sealed class ProjectMatchingService(
         if (proposal.Status == ProposalStatus.Matched || proposal.Match is not null)
         {
             return OperationResult.Failure("This proposal is already matched.");
+        }
+
+        if (!await HasExpertiseAsync(db, supervisorId, proposal.ResearchAreaId))
+        {
+            return OperationResult.Failure("This proposal is outside your expertise areas.");
         }
 
         var duplicate = await db.SupervisorInterests
@@ -57,6 +64,7 @@ public sealed class ProjectMatchingService(
 
         proposal.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return OperationResult.Success("Interest recorded.");
     }
 
@@ -87,6 +95,11 @@ public sealed class ProjectMatchingService(
         if (proposal.Status == ProposalStatus.Matched || proposal.Match is not null)
         {
             return OperationResult.Failure("Another supervisor has already confirmed this proposal.");
+        }
+
+        if (!await HasExpertiseAsync(db, supervisorId, proposal.ResearchAreaId))
+        {
+            return OperationResult.Failure("This proposal is outside your expertise areas.");
         }
 
         var hasInterest = await db.SupervisorInterests
@@ -181,6 +194,10 @@ public sealed class ProjectMatchingService(
 
         return OperationResult.Success("Capacity available.");
     }
+
+    private static Task<bool> HasExpertiseAsync(ApplicationDbContext db, string supervisorId, int researchAreaId) =>
+        db.SupervisorExpertise.AnyAsync(e =>
+            e.SupervisorId == supervisorId && e.ResearchAreaId == researchAreaId);
 
     private static void CreateMatch(ApplicationDbContext db, ProjectProposal proposal, string supervisorId)
     {

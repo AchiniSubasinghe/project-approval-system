@@ -118,13 +118,27 @@ else
         {
             proposal = null;
         }
-        else if (proposal?.Status == ProposalStatus.Matched && proposal.Match?.SupervisorId != userId)
+        else if (proposal?.Status == ProposalStatus.Matched || proposal?.Match is not null)
         {
-            proposal = null;
+            if (proposal.Match?.SupervisorId != userId)
+            {
+                proposal = null;
+            }
+        }
+        else if (proposal is not null)
+        {
+            var hasExpertise = await db.SupervisorExpertise
+                .AnyAsync(e => e.SupervisorId == userId && e.ResearchAreaId == proposal.ResearchAreaId);
+
+            if (!hasExpertise || proposal.Status is not (ProposalStatus.Pending or ProposalStatus.UnderReview))
+            {
+                proposal = null;
+            }
         }
 
-        hasInterest = await db.SupervisorInterests
-            .AnyAsync(i => i.ProposalId == Id && i.SupervisorId == userId);
+        hasInterest = proposal is not null
+            && await db.SupervisorInterests
+                .AnyAsync(i => i.ProposalId == Id && i.SupervisorId == userId);
 
         loading = false;
     }
