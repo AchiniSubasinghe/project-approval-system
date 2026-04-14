@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
@@ -64,9 +65,85 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapPost("/Account/Login", async (
+    HttpContext httpContext,
+    SignInManager<ApplicationUser> signInManager) =>
+{
+    var form = await httpContext.Request.ReadFormAsync();
+    var email = GetFormValue(form, "Input.Email", "Email");
+    var password = GetFormValue(form, "Input.Password", "Password");
+    var returnUrl = httpContext.Request.Query["returnUrl"].ToString();
+
+    if (!string.IsNullOrWhiteSpace(email) && !string.IsNullOrWhiteSpace(password))
+    {
+        var result = await signInManager.PasswordSignInAsync(
+            email,
+            password,
+            isPersistent: false,
+            lockoutOnFailure: false);
+
+        if (result.Succeeded)
+        {
+            return Results.Redirect(GetSafeReturnUrl(returnUrl));
+        }
+
+        if (result.IsLockedOut)
+        {
+            return Results.Redirect(GetLoginRedirect("locked", returnUrl));
+        }
+    }
+
+    return Results.Redirect(GetLoginRedirect("invalid", returnUrl));
+}).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+app.MapPost("/Account/Logout", async (SignInManager<ApplicationUser> signInManager) =>
+{
+    await signInManager.SignOutAsync();
+    return Results.Redirect("/");
+})
+.RequireAuthorization()
+.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 await DbInitializer.SeedAsync(app.Services);
 
 app.Run();
+
+static string GetFormValue(IFormCollection form, string fullName, string fallbackName)
+{
+    if (form.TryGetValue(fullName, out var value))
+    {
+        return value.ToString();
+    }
+
+    return form[fallbackName].ToString();
+}
+
+static string GetLoginRedirect(string error, string? returnUrl)
+{
+    var path = $"/Account/Login?error={Uri.EscapeDataString(error)}";
+    var safeReturnUrl = GetSafeReturnUrl(returnUrl);
+
+    return safeReturnUrl == "/"
+        ? path
+        : $"{path}&returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
+}
+
+static string GetSafeReturnUrl(string? returnUrl)
+{
+    return string.IsNullOrWhiteSpace(returnUrl) || !IsLocalUrl(returnUrl)
+        ? "/"
+        : returnUrl;
+}
+
+static bool IsLocalUrl(string url)
+{
+    if (url[0] != '/')
+    {
+        return false;
+    }
+
+    return url.Length == 1 || (url[1] != '/' && url[1] != '\\');
+}
