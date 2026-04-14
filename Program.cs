@@ -65,7 +65,7 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
-app.MapPost("/Account/Login", async (
+app.MapPost("/Account/LoginSubmit", async (
     HttpContext httpContext,
     SignInManager<ApplicationUser> signInManager) =>
 {
@@ -96,7 +96,7 @@ app.MapPost("/Account/Login", async (
     return Results.Redirect(GetLoginRedirect("invalid", returnUrl));
 }).WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
-app.MapPost("/Account/Logout", async (SignInManager<ApplicationUser> signInManager) =>
+app.MapPost("/Account/LogoutSubmit", async (SignInManager<ApplicationUser> signInManager) =>
 {
     await signInManager.SignOutAsync();
     return Results.Redirect("/");

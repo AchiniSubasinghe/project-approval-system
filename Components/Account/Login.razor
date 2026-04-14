@@ -54,8 +54,8 @@
             var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
 
             return safeReturnUrl == "/"
-                ? "/Account/Login"
-                : $"/Account/Login?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
+                ? "/Account/LoginSubmit"
+                : $"/Account/LoginSubmit?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
         }
     }
 

@@ -7,7 +7,7 @@
     <MudPaper Class="pa-6" Elevation="2">
         <MudText Typo="Typo.h5" Class="mb-4">Sign out</MudText>
         <MudText Typo="Typo.body1" Class="mb-4">Are you sure you want to sign out?</MudText>
-        <form method="post" action="/Account/Logout">
+        <form method="post" action="/Account/LogoutSubmit">
             <AntiforgeryToken />
             <MudStack Row="true" Spacing="2">
                 <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Sign out</MudButton>
