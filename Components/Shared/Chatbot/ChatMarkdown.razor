@@ -1,0 +1,22 @@
+@using Markdig
+
+@if (!string.IsNullOrWhiteSpace(Text))
+{
+    <div class="@Class">@((MarkupString)RenderMarkdown(Text))</div>
+}
+
+@code {
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UsePipeTables()
+        .DisableHtml()
+        .Build();
+
+    [Parameter]
+    public string? Text { get; set; }
+
+    [Parameter]
+    public string Class { get; set; } = "chat-text chat-markdown";
+
+    private static string RenderMarkdown(string markdown) =>
+        Markdown.ToHtml(markdown, Pipeline);
+}

@@ -9,7 +9,14 @@
                 switch (block.Type)
                 {
                     case ChatContentType.Text when !string.IsNullOrWhiteSpace(block.Text):
-                        <div class="chat-text">@block.Text</div>
+                        if (IsUser)
+                        {
+                            <div class="chat-text">@block.Text</div>
+                        }
+                        else
+                        {
+                            <ChatMarkdown Text="@block.Text" />
+                        }
                         break;
                     case ChatContentType.ToolUse:
                         <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Build" Class="chat-tool-chip">

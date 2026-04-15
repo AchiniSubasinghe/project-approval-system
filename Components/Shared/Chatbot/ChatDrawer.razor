@@ -55,7 +55,7 @@
                     <div class="chat-bubble chat-bubble-assistant">
                         @if (!string.IsNullOrEmpty(_streamingText))
                         {
-                            <div class="chat-text">@_streamingText</div>
+                            <ChatMarkdown Text="@_streamingText" />
                         }
                         else
                         {
@@ -166,6 +166,72 @@
     .chat-text {
         white-space: pre-wrap;
         word-wrap: break-word;
+    }
+
+    .chat-markdown {
+        white-space: normal;
+        overflow-x: auto;
+    }
+
+    .chat-markdown > :first-child {
+        margin-top: 0;
+    }
+
+    .chat-markdown > :last-child {
+        margin-bottom: 0;
+    }
+
+    .chat-markdown p,
+    .chat-markdown ul,
+    .chat-markdown ol,
+    .chat-markdown pre,
+    .chat-markdown blockquote,
+    .chat-markdown table {
+        margin: 0 0 0.65rem;
+    }
+
+    .chat-markdown ul,
+    .chat-markdown ol {
+        padding-left: 1.2rem;
+    }
+
+    .chat-markdown code {
+        padding: 0.05rem 0.25rem;
+        border-radius: 4px;
+        background-color: var(--mud-palette-background-grey);
+        font-size: 0.86em;
+    }
+
+    .chat-markdown pre {
+        overflow-x: auto;
+        padding: 0.6rem;
+        border-radius: 6px;
+        background-color: var(--mud-palette-background-grey);
+    }
+
+    .chat-markdown pre code {
+        padding: 0;
+        background-color: transparent;
+    }
+
+    .chat-markdown blockquote {
+        padding-left: 0.75rem;
+        border-left: 3px solid var(--mud-palette-lines-default);
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .chat-markdown table {
+        width: max-content;
+        min-width: 100%;
+        border-collapse: collapse;
+    }
+
+    .chat-markdown th,
+    .chat-markdown td {
+        padding: 0.35rem 0.5rem;
+        border: 1px solid var(--mud-palette-lines-default);
+        text-align: left;
+        vertical-align: top;
     }
 
     .chat-tool-chip {
