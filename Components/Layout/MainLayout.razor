@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
 
+@using project_approval_system.Components.Shared.Chatbot
+
 <MudThemeProvider />
 <MudPopoverProvider />
 <MudDialogProvider />
@@ -12,6 +14,11 @@
         <AuthorizeView Context="authCtx">
             <Authorized>
                 <MudText Typo="Typo.body2" Class="mr-3">@authCtx.User.Identity!.Name</MudText>
+                <MudTooltip Text="Assistant">
+                    <MudIconButton Icon="@Icons.Material.Filled.SmartToy"
+                                   Color="Color.Inherit"
+                                   OnClick="() => _chatOpen = !_chatOpen" />
+                </MudTooltip>
                 <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/Account/Logout" StartIcon="@Icons.Material.Filled.Logout">
                     Sign out
                 </MudButton>
@@ -29,6 +36,11 @@
             @Body
         </MudContainer>
     </MudMainContent>
+    <AuthorizeView>
+        <Authorized>
+            <ChatDrawer @bind-Open="_chatOpen" />
+        </Authorized>
+    </AuthorizeView>
 </MudLayout>
 
 <div id="blazor-error-ui" data-nosnippet>
@@ -36,3 +48,7 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private bool _chatOpen;
+}

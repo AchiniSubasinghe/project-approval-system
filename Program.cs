@@ -5,6 +5,8 @@ using MudBlazor.Services;
 using project_approval_system.Components;
 using project_approval_system.Data;
 using project_approval_system.Services;
+using project_approval_system.Services.Chatbot;
+using project_approval_system.Services.Chatbot.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +47,14 @@ builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddMudServices();
 builder.Services.AddScoped<IProjectMatchingService, ProjectMatchingService>();
+
+builder.Services.Configure<AnthropicOptions>(builder.Configuration.GetSection(AnthropicOptions.SectionName));
+builder.Services.AddHttpClient<AnthropicClient>();
+builder.Services.AddScoped<StudentTools>();
+builder.Services.AddScoped<SupervisorTools>();
+builder.Services.AddScoped<ModuleLeaderTools>();
+builder.Services.AddScoped<IChatToolRegistry, ChatToolRegistry>();
+builder.Services.AddScoped<IChatbotService, ChatbotService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

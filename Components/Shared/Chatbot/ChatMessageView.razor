@@ -1,0 +1,34 @@
+@using project_approval_system.Services.Chatbot.Models
+
+@if (Message is not null && HasRenderableContent)
+{
+    <div class="chat-row @(IsUser ? "chat-row-user" : "chat-row-assistant")">
+        <div class="chat-bubble @(IsUser ? "chat-bubble-user" : "chat-bubble-assistant")">
+            @foreach (var block in Message.Content)
+            {
+                switch (block.Type)
+                {
+                    case ChatContentType.Text when !string.IsNullOrWhiteSpace(block.Text):
+                        <div class="chat-text">@block.Text</div>
+                        break;
+                    case ChatContentType.ToolUse:
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Build" Class="chat-tool-chip">
+                            @block.ToolName
+                        </MudChip>
+                        break;
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatMessage? Message { get; set; }
+
+    private bool IsUser => Message?.Role == ChatRole.User;
+
+    private bool HasRenderableContent => Message?.Content.Any(c =>
+        (c.Type == ChatContentType.Text && !string.IsNullOrWhiteSpace(c.Text))
+        || c.Type == ChatContentType.ToolUse) == true;
+}
