@@ -3,37 +3,89 @@
 <PageTitle>Blind-Match PAS</PageTitle>
 
 <MudStack Spacing="4">
-    <MudText Typo="Typo.h3">Welcome to Blind-Match</MudText>
-    <MudText Typo="Typo.body1">
-        A fair, interest-driven platform for pairing students with final-year project supervisors.
-        Students submit proposals anonymously; supervisors select projects that match their expertise.
-    </MudText>
+    <MudGrid>
+        <MudItem xs="12" md="7">
+            <MudStack Spacing="2">
+                <MudText Typo="Typo.overline" Color="Color.Primary">Blind-Match PAS</MudText>
+                <MudText Typo="Typo.h3">Fair project supervision starts here.</MudText>
+                <MudText Typo="Typo.body1">
+                    Students submit project proposals by research area. Supervisors review suitable ideas without student identities
+                    and confirm matches when the topic fits their expertise.
+                </MudText>
+            </MudStack>
+        </MudItem>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.h6">How allocation works</MudText>
+                    <MudText Typo="Typo.body2">1. Students submit ideas with an abstract, technical stack, and research area.</MudText>
+                    <MudText Typo="Typo.body2">2. Supervisors browse matching proposals anonymously.</MudText>
+                    <MudText Typo="Typo.body2">3. Confirmed matches reveal both parties so collaboration can begin.</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
     <AuthorizeView>
         <Authorized>
-            <MudStack Row="true" Spacing="2">
+            <MudAlert Severity="Severity.Info">
+                Choose the workspace for your role to continue with your current allocation tasks.
+            </MudAlert>
+
+            <MudGrid>
                 <AuthorizeView Roles="Student" Context="studentCtx">
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/student">
-                        Go to My Proposals
-                    </MudButton>
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="pa-4" Elevation="1">
+                            <MudStack Spacing="2">
+                                <MudText Typo="Typo.h6">Student workspace</MudText>
+                                <MudText Typo="Typo.body2">Submit proposals and track whether a supervisor has confirmed your project.</MudText>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/student">
+                                    Open my proposals
+                                </MudButton>
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
                 </AuthorizeView>
                 <AuthorizeView Roles="Supervisor" Context="supervisorCtx">
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/supervisor">
-                        Open Blind Review
-                    </MudButton>
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="pa-4" Elevation="1">
+                            <MudStack Spacing="2">
+                                <MudText Typo="Typo.h6">Supervisor workspace</MudText>
+                                <MudText Typo="Typo.body2">Manage expertise, review anonymous proposals, and confirm suitable matches.</MudText>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/supervisor">
+                                    Open blind review
+                                </MudButton>
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
                 </AuthorizeView>
                 <AuthorizeView Roles="ModuleLeader" Context="adminCtx">
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/admin">
-                        Open Module Leader Dashboard
-                    </MudButton>
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="pa-4" Elevation="1">
+                            <MudStack Spacing="2">
+                                <MudText Typo="Typo.h6">Module leader workspace</MudText>
+                                <MudText Typo="Typo.body2">Monitor allocation progress, maintain research areas, and manage access.</MudText>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/admin">
+                                    Open dashboard
+                                </MudButton>
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
                 </AuthorizeView>
-            </MudStack>
+            </MudGrid>
         </Authorized>
         <NotAuthorized>
-            <MudStack Row="true" Spacing="2">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/Account/Login">
-                    Sign in
-                </MudButton>
-            </MudStack>
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.h6">Sign in to continue</MudText>
+                    <MudText Typo="Typo.body2">
+                        Your dashboard is based on your role: student, supervisor, or module leader.
+                    </MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/Account/Login">
+                        Sign in
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
         </NotAuthorized>
     </AuthorizeView>
 </MudStack>

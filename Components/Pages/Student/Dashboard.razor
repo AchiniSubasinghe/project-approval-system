@@ -16,7 +16,10 @@
 
 <MudStack Spacing="4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-        <MudText Typo="Typo.h4">My Proposals</MudText>
+        <div>
+            <MudText Typo="Typo.h4">My Proposals</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Submit ideas, follow review progress, and open matched supervisor details.</MudText>
+        </div>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
                    OnClick="@(() => Navigation.NavigateTo("/student/proposal/new"))">
             New proposal
@@ -27,39 +30,98 @@
     {
         <MudProgressLinear Indeterminate="true" />
     }
-    else if (proposals.Count == 0)
-    {
-        <MudAlert Severity="Severity.Info">You have not submitted any proposals yet.</MudAlert>
-    }
     else
     {
-        <MudTable Items="proposals" Hover="true" Dense="false" Striped="true">
-            <HeaderContent>
-                <MudTh>Title</MudTh>
-                <MudTh>Research Area</MudTh>
-                <MudTh>Status</MudTh>
-                <MudTh>Updated</MudTh>
-                <MudTh Style="text-align: right;">Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Title">@context.Title</MudTd>
-                <MudTd DataLabel="Research Area">@context.ResearchArea.Name</MudTd>
-                <MudTd DataLabel="Status">
-                    <MudChip T="string" Color="@StatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
-                </MudTd>
-                <MudTd DataLabel="Updated">@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
-                <MudTd DataLabel="Actions" Style="text-align: right;">
-                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
-                                   OnClick="@(() => Navigation.NavigateTo($"/student/proposal/{context.Id}"))" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
-                                   Disabled="@(!CanEdit(context.Status))"
-                                   OnClick="@(() => Navigation.NavigateTo($"/student/proposal/{context.Id}/edit"))" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
-                                   Disabled="@(!CanWithdraw(context.Status))"
-                                   OnClick="@(() => WithdrawAsync(context.Id))" />
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Total Proposals</MudText>
+                    <MudText Typo="Typo.h5">@ProposalCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">In Review</MudText>
+                    <MudText Typo="Typo.h5">@ActiveProposalCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Matched</MudText>
+                    <MudText Typo="Typo.h5">@MatchedProposalCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Withdrawn</MudText>
+                    <MudText Typo="Typo.h5">@WithdrawnProposalCount</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @if (ProposalCount == 0)
+        {
+            <MudAlert Severity="Severity.Info">
+                Start by submitting a proposal with a clear abstract, technical stack, and research area.
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/student/proposal/new">Create proposal</MudButton>
+            </MudAlert>
+        }
+        else if (LatestMatchedProposal is not null)
+        {
+            <MudAlert Severity="Severity.Success">
+                Your proposal "@LatestMatchedProposal.Title" has been matched. Open it to view the revealed supervisor details.
+                <MudButton Variant="Variant.Text" Color="Color.Success" Href="@($"/student/proposal/{LatestMatchedProposal.Id}")">View match</MudButton>
+            </MudAlert>
+        }
+        else if (LatestActiveProposal is not null)
+        {
+            <MudAlert Severity="Severity.Info">
+                Your latest active proposal is still available for supervisor review. You can edit or withdraw it until it is matched.
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Href="@($"/student/proposal/{LatestActiveProposal.Id}")">Review status</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning">
+                All submitted proposals are withdrawn. Submit a new proposal when you are ready for review.
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/student/proposal/new">New proposal</MudButton>
+            </MudAlert>
+        }
+
+        @if (proposals.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">You have not submitted any proposals yet.</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="proposals" Hover="true" Dense="false" Striped="true">
+                <HeaderContent>
+                    <MudTh>Title</MudTh>
+                    <MudTh>Research Area</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Updated</MudTh>
+                    <MudTh Style="text-align: right;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Title">@context.Title</MudTd>
+                    <MudTd DataLabel="Research Area">@context.ResearchArea.Name</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Color="@StatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Updated">@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                    <MudTd DataLabel="Actions" Style="text-align: right;">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                       OnClick="@(() => Navigation.NavigateTo($"/student/proposal/{context.Id}"))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       Disabled="@(!CanEdit(context.Status))"
+                                       OnClick="@(() => Navigation.NavigateTo($"/student/proposal/{context.Id}/edit"))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                                       Disabled="@(!CanWithdraw(context.Status))"
+                                       OnClick="@(() => WithdrawAsync(context.Id))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
     }
 </MudStack>
 
@@ -67,6 +129,13 @@
     private List<ProjectProposal> proposals = new();
     private bool loading = true;
     private string? userId;
+
+    private int ProposalCount => proposals.Count;
+    private int ActiveProposalCount => proposals.Count(p => p.Status is ProposalStatus.Pending or ProposalStatus.UnderReview);
+    private int MatchedProposalCount => proposals.Count(p => p.Status == ProposalStatus.Matched);
+    private int WithdrawnProposalCount => proposals.Count(p => p.Status == ProposalStatus.Withdrawn);
+    private ProjectProposal? LatestActiveProposal => proposals.FirstOrDefault(p => p.Status is ProposalStatus.Pending or ProposalStatus.UnderReview);
+    private ProjectProposal? LatestMatchedProposal => proposals.FirstOrDefault(p => p.Status == ProposalStatus.Matched);
 
     protected override async Task OnInitializedAsync()
     {

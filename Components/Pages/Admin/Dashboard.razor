@@ -1,9 +1,11 @@
 @page "/admin"
 @layout Layout.MainLayout
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Roles = Roles.ModuleLeader)]
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>Module Leader</PageTitle>
 
@@ -28,6 +30,12 @@
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Pending</MudText>
+                    <MudText Typo="Typo.h5">@pendingCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
                     <MudText Typo="Typo.overline">Under Review</MudText>
                     <MudText Typo="Typo.h5">@underReviewCount</MudText>
                 </MudPaper>
@@ -40,16 +48,53 @@
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Withdrawn</MudText>
+                    <MudText Typo="Typo.h5">@withdrawnCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
                     <MudText Typo="Typo.overline">Research Areas</MudText>
                     <MudText Typo="Typo.h5">@researchAreaCount</MudText>
                 </MudPaper>
             </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Students</MudText>
+                    <MudText Typo="Typo.h5">@studentCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Supervisors</MudText>
+                    <MudText Typo="Typo.h5">@supervisorCount</MudText>
+                </MudPaper>
+            </MudItem>
         </MudGrid>
+
+        @if (proposalCount == 0)
+        {
+            <MudAlert Severity="Severity.Info">No proposals have been submitted yet. Student submissions will appear in allocation views when available.</MudAlert>
+        }
+        else if (pendingCount + underReviewCount > 0)
+        {
+            <MudAlert Severity="Severity.Info">
+                @($"{pendingCount + underReviewCount} proposal(s) still need allocation attention.")
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/admin/proposals">Review proposals</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Success">All current proposals are either matched or withdrawn.</MudAlert>
+        }
 
         <MudGrid>
             <MudItem xs="12" md="6">
                 <MudPaper Class="pa-4" Elevation="1">
-                    <MudText Typo="Typo.h6" Class="mb-3">Allocation</MudText>
+                    <MudText Typo="Typo.h6" Class="mb-2">Allocation oversight</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                        Review project flow and inspect confirmed student-supervisor pairings.
+                    </MudText>
                     <MudStack Row="true" Spacing="2">
                         <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/admin/proposals">Review proposals</MudButton>
                         <MudButton Variant="Variant.Outlined" Href="/admin/matches">View matches</MudButton>
@@ -58,7 +103,10 @@
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudPaper Class="pa-4" Elevation="1">
-                    <MudText Typo="Typo.h6" Class="mb-3">Configuration</MudText>
+                    <MudText Typo="Typo.h6" Class="mb-2">Configuration</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                        Keep account access and research areas ready for the next allocation cycle.
+                    </MudText>
                     <MudStack Row="true" Spacing="2">
                         <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/admin/users">Manage users</MudButton>
                         <MudButton Variant="Variant.Outlined" Href="/admin/research-areas">Research areas</MudButton>
@@ -72,17 +120,25 @@
 @code {
     private bool loading = true;
     private int proposalCount;
+    private int pendingCount;
     private int underReviewCount;
     private int matchedCount;
+    private int withdrawnCount;
     private int researchAreaCount;
+    private int studentCount;
+    private int supervisorCount;
 
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         proposalCount = await db.Proposals.CountAsync();
+        pendingCount = await db.Proposals.CountAsync(p => p.Status == ProposalStatus.Pending);
         underReviewCount = await db.Proposals.CountAsync(p => p.Status == ProposalStatus.UnderReview);
         matchedCount = await db.Proposals.CountAsync(p => p.Status == ProposalStatus.Matched);
+        withdrawnCount = await db.Proposals.CountAsync(p => p.Status == ProposalStatus.Withdrawn);
         researchAreaCount = await db.ResearchAreas.CountAsync();
+        studentCount = (await UserManager.GetUsersInRoleAsync(Roles.Student)).Count;
+        supervisorCount = (await UserManager.GetUsersInRoleAsync(Roles.Supervisor)).Count;
         loading = false;
     }
 }

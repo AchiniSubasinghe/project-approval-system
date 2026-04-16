@@ -25,79 +25,121 @@
         </MudButton>
     </MudStack>
 
-    <MudGrid>
-        <MudItem xs="12" sm="4">
-            <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.overline">Capacity</MudText>
-                <MudText Typo="Typo.h5">@currentMatches / @maxCapacity</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.overline">Expertise Areas</MudText>
-                <MudText Typo="Typo.h5">@expertiseCount</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.overline">Available Projects</MudText>
-                <MudText Typo="Typo.h5">@availableProposals.Count</MudText>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
-
     @if (loading)
     {
         <MudProgressLinear Indeterminate="true" />
     }
-    else if (expertiseCount == 0)
-    {
-        <MudAlert Severity="Severity.Warning">Select at least one expertise area before reviewing proposals.</MudAlert>
-    }
-    else if (availableProposals.Count == 0)
-    {
-        <MudAlert Severity="Severity.Info">No unmatched proposals are available in your expertise areas.</MudAlert>
-    }
     else
     {
-        <MudTable Items="availableProposals" Hover="true" Striped="true">
-            <HeaderContent>
-                <MudTh>Title</MudTh>
-                <MudTh>Research Area</MudTh>
-                <MudTh>Technical Stack</MudTh>
-                <MudTh>Status</MudTh>
-                <MudTh Style="text-align: right;">Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Title">@context.Title</MudTd>
-                <MudTd DataLabel="Research Area">@context.ResearchAreaName</MudTd>
-                <MudTd DataLabel="Technical Stack">@context.TechnicalStack</MudTd>
-                <MudTd DataLabel="Status">
-                    <MudChip T="string" Color="@StatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
-                </MudTd>
-                <MudTd DataLabel="Actions" Style="text-align: right;">
-                    <MudButton Variant="Variant.Text" Size="Size.Small"
-                               OnClick="@(() => Navigation.NavigateTo($"/supervisor/proposal/{context.Id}"))">
-                        Details
-                    </MudButton>
-                    @if (context.HasInterest)
-                    {
-                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
-                                   Disabled="@(!HasCapacity)"
-                                   OnClick="@(() => ConfirmAsync(context.Id))">
-                            Confirm
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Capacity</MudText>
+                    <MudText Typo="Typo.h5">@currentMatches / @maxCapacity</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Expertise Areas</MudText>
+                    <MudText Typo="Typo.h5">@expertiseCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">Available Projects</MudText>
+                    <MudText Typo="Typo.h5">@availableProposals.Count</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.overline">My Interests</MudText>
+                    <MudText Typo="Typo.h5">@interestCount</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @if (expertiseCount == 0)
+        {
+            <MudAlert Severity="Severity.Warning">
+                Select at least one expertise area before reviewing proposals.
+                <MudButton Variant="Variant.Text" Color="Color.Warning" Href="/supervisor/expertise">Choose expertise</MudButton>
+            </MudAlert>
+        }
+        else if (availableProposals.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">
+                No unmatched proposals are available in your expertise areas. New anonymous proposals will appear here when students submit them.
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/supervisor/interests">View my interests</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">
+                Review project fit without student identity. Express interest first, then confirm when the project is ready to supervise.
+            </MudAlert>
+        }
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.h6">Review queue</MudText>
+                        <MudText Typo="Typo.body2">@availableProposals.Count proposal(s) match your expertise areas and remain unmatched.</MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.h6">Confirmed matches</MudText>
+                        <MudText Typo="Typo.body2">@currentMatches confirmed match(es) count toward your capacity of @maxCapacity.</MudText>
+                        <MudButton Variant="Variant.Outlined" Href="/supervisor/matches">View matches</MudButton>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @if (expertiseCount != 0 && availableProposals.Count != 0)
+        {
+            <MudTable Items="availableProposals" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>Title</MudTh>
+                    <MudTh>Research Area</MudTh>
+                    <MudTh>Technical Stack</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="text-align: right;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Title">@context.Title</MudTd>
+                    <MudTd DataLabel="Research Area">@context.ResearchAreaName</MudTd>
+                    <MudTd DataLabel="Technical Stack">@context.TechnicalStack</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Color="@StatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Actions" Style="text-align: right;">
+                        <MudButton Variant="Variant.Text" Size="Size.Small"
+                                   OnClick="@(() => Navigation.NavigateTo($"/supervisor/proposal/{context.Id}"))">
+                            Details
                         </MudButton>
-                    }
-                    else
-                    {
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                                   OnClick="@(() => ExpressInterestAsync(context.Id))">
-                            Express interest
-                        </MudButton>
-                    }
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+                        @if (context.HasInterest)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                       Disabled="@(!HasCapacity)"
+                                       OnClick="@(() => ConfirmAsync(context.Id))">
+                                Confirm
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="@(() => ExpressInterestAsync(context.Id))">
+                                Express interest
+                            </MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
     }
 </MudStack>
 
@@ -108,6 +150,7 @@
     private int currentMatches;
     private int maxCapacity = ApplicationUser.DefaultMaxProjectCapacity;
     private int expertiseCount;
+    private int interestCount;
 
     private bool HasCapacity => currentMatches < maxCapacity;
 
@@ -126,6 +169,7 @@
         var supervisor = await db.Users.FirstOrDefaultAsync(u => u.Id == userId);
         maxCapacity = supervisor?.MaxProjectCapacity ?? ApplicationUser.DefaultMaxProjectCapacity;
         currentMatches = await db.Matches.CountAsync(m => m.SupervisorId == userId);
+        interestCount = await db.SupervisorInterests.CountAsync(i => i.SupervisorId == userId);
 
         var expertiseAreaIds = await db.SupervisorExpertise
             .Where(e => e.SupervisorId == userId)
