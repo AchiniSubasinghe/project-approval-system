@@ -10,10 +10,19 @@ namespace project_approval_system.Services.Chatbot;
 internal sealed class ChatbotService(
     AnthropicClient client,
     IChatToolRegistry toolRegistry,
+    IPendingActionStore pendingActionStore,
     IOptions<AnthropicOptions> options,
     IWebHostEnvironment env,
     ILogger<ChatbotService> logger) : IChatbotService
 {
+    private static readonly HashSet<string> WriteToolNames = new(StringComparer.Ordinal)
+    {
+        "withdraw_my_proposal",
+        "express_interest",
+        "confirm_match",
+        "admin_assign",
+    };
+
     private readonly AnthropicOptions _options = options.Value;
     private string? _cachedSystemPromptTemplate;
 
@@ -32,8 +41,94 @@ internal sealed class ChatbotService(
 
         history.Add(ChatMessage.UserText(userInput));
 
+        await foreach (var ev in ContinueLoopAsync(history, user, ctx.Value, ct))
+        {
+            yield return ev;
+        }
+    }
+
+    public async IAsyncEnumerable<ChatTurnEvent> ResumePendingActionAsync(
+        IList<ChatMessage> history,
+        string token,
+        bool confirmed,
+        ClaimsPrincipal user,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var ctx = BuildContext(user);
+        if (ctx is null)
+        {
+            yield return new TurnErrorEvent("You must be signed in to resume an action.");
+            yield break;
+        }
+
+        var pending = pendingActionStore.Consume(token, ctx.Value.UserId);
+        if (pending is null)
+        {
+            yield return new TurnErrorEvent("This confirmation has expired or is no longer valid.");
+            yield break;
+        }
+
+        var placeholder = FindPlaceholder(history, pending.ToolUseId);
+        if (placeholder is null)
+        {
+            yield return new TurnErrorEvent("The pending action is no longer in the conversation history.");
+            yield break;
+        }
+
+        string resultJson;
+        var isError = false;
+        bool succeeded;
+        string message;
+
+        if (!confirmed)
+        {
+            resultJson = JsonSerializer.Serialize(new
+            {
+                status = "user_canceled",
+                message = "The user declined to execute this action.",
+            });
+            succeeded = false;
+            message = "Canceled.";
+        }
+        else
+        {
+            try
+            {
+                var args = JsonSerializer.Deserialize<JsonElement>(pending.ArgsJson);
+                resultJson = await toolRegistry.ExecuteAsync(pending.ToolName, args, ctx.Value, ct);
+                succeeded = true;
+                message = "Executed.";
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Write tool '{Tool}' failed", pending.ToolName);
+                resultJson = JsonSerializer.Serialize(new { error = ex.Message });
+                isError = true;
+                succeeded = false;
+                message = ex.Message;
+            }
+        }
+
+        placeholder.ToolResultContent = resultJson;
+        placeholder.ToolResultIsError = isError;
+
+        yield return new ToolCallFinishedEvent(pending.ToolUseId, pending.ToolName, resultJson.Length, isError);
+        yield return new ActionCommittedEvent(token, confirmed, succeeded, message);
+
+        await foreach (var ev in ContinueLoopAsync(history, user, ctx.Value, ct))
+        {
+            yield return ev;
+        }
+    }
+
+    private async IAsyncEnumerable<ChatTurnEvent> ContinueLoopAsync(
+        IList<ChatMessage> history,
+        ClaimsPrincipal user,
+        ChatToolContext ctx,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
         var toolDefs = toolRegistry.ForUser(user);
-        var systemPrompt = BuildSystemPrompt(ctx.Value);
+        var systemPrompt = BuildSystemPrompt(ctx);
 
         var anthropicTools = toolDefs.Select(t => new AnthropicTool
         {
@@ -131,37 +226,118 @@ internal sealed class ChatbotService(
             }
 
             var toolResults = new List<ChatContentBlock>();
+            var writeGated = false;
             foreach (var call in toolUseBlocks)
             {
-                string resultJson;
-                bool isError;
-                try
+                if (WriteToolNames.Contains(call.Name))
                 {
-                    resultJson = await toolRegistry.ExecuteAsync(call.Name, call.Input, ctx.Value, ct);
-                    isError = false;
+                    var argsJson = call.Input.GetRawText();
+                    var token = pendingActionStore.Enqueue(ctx.UserId, call.Id, call.Name, argsJson);
+                    var summary = SummarizeWriteAction(call.Name, call.Input);
+                    var placeholderJson = JsonSerializer.Serialize(new
+                    {
+                        status = "awaiting_user_confirmation",
+                        token,
+                    });
+                    toolResults.Add(new ChatContentBlock
+                    {
+                        Type = ChatContentType.ToolResult,
+                        ToolUseId = call.Id,
+                        ToolResultContent = placeholderJson,
+                        ToolResultIsError = false,
+                    });
+                    writeGated = true;
+                    yield return new ActionConfirmationRequiredEvent(token, call.Id, call.Name, summary, argsJson);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                else
                 {
-                    logger.LogWarning(ex, "Tool '{Tool}' failed", call.Name);
-                    resultJson = JsonSerializer.Serialize(new { error = ex.Message });
-                    isError = true;
+                    string resultJson;
+                    bool isError;
+                    try
+                    {
+                        resultJson = await toolRegistry.ExecuteAsync(call.Name, call.Input, ctx, ct);
+                        isError = false;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        logger.LogWarning(ex, "Tool '{Tool}' failed", call.Name);
+                        resultJson = JsonSerializer.Serialize(new { error = ex.Message });
+                        isError = true;
+                    }
+
+                    toolResults.Add(new ChatContentBlock
+                    {
+                        Type = ChatContentType.ToolResult,
+                        ToolUseId = call.Id,
+                        ToolResultContent = resultJson,
+                        ToolResultIsError = isError,
+                    });
+
+                    yield return new ToolCallFinishedEvent(call.Id, call.Name, resultJson.Length, isError);
                 }
-
-                toolResults.Add(new ChatContentBlock
-                {
-                    Type = ChatContentType.ToolResult,
-                    ToolUseId = call.Id,
-                    ToolResultContent = resultJson,
-                    ToolResultIsError = isError,
-                });
-
-                yield return new ToolCallFinishedEvent(call.Id, call.Name, resultJson.Length, isError);
             }
 
             history.Add(new ChatMessage { Role = ChatRole.User, Content = toolResults });
+
+            if (writeGated)
+            {
+                yield return new TurnCompletedEvent("awaiting_user_confirmation");
+                yield break;
+            }
         }
 
         yield return new TurnErrorEvent($"Tool-use loop exceeded the {_options.MaxToolIterations}-iteration limit.");
+    }
+
+    private static ChatContentBlock? FindPlaceholder(IList<ChatMessage> history, string toolUseId)
+    {
+        for (var i = history.Count - 1; i >= 0; i--)
+        {
+            var msg = history[i];
+            if (msg.Role != ChatRole.User) continue;
+            foreach (var block in msg.Content)
+            {
+                if (block.Type == ChatContentType.ToolResult && block.ToolUseId == toolUseId)
+                {
+                    return block;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static string SummarizeWriteAction(string toolName, JsonElement args)
+    {
+        int? proposalId = args.ValueKind == JsonValueKind.Object
+                          && args.TryGetProperty("proposalId", out var p)
+                          && p.ValueKind == JsonValueKind.Number
+            ? p.GetInt32()
+            : null;
+        string? supervisorId = args.ValueKind == JsonValueKind.Object
+                               && args.TryGetProperty("supervisorId", out var s)
+                               && s.ValueKind == JsonValueKind.String
+            ? s.GetString()
+            : null;
+
+        return toolName switch
+        {
+            "withdraw_my_proposal" => proposalId is null
+                ? "Withdraw a proposal"
+                : $"Withdraw proposal #{proposalId}",
+            "express_interest" => proposalId is null
+                ? "Express interest in a proposal"
+                : $"Express interest in proposal #{proposalId}",
+            "confirm_match" => proposalId is null
+                ? "Confirm a match"
+                : $"Confirm your match for proposal #{proposalId}",
+            "admin_assign" => (proposalId, supervisorId) switch
+            {
+                (null, _) => "Assign a supervisor to a proposal",
+                (_, null) => $"Assign a supervisor to proposal #{proposalId}",
+                _ => $"Assign supervisor {supervisorId} to proposal #{proposalId}",
+            },
+            _ => toolName,
+        };
     }
 
     private static ChatToolContext? BuildContext(ClaimsPrincipal user)

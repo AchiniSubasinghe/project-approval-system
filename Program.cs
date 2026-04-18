@@ -48,12 +48,14 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<IProjectMatchingService, ProjectMatchingService>();
 
+builder.Services.AddMemoryCache();
 builder.Services.Configure<AnthropicOptions>(builder.Configuration.GetSection(AnthropicOptions.SectionName));
 builder.Services.AddHttpClient<AnthropicClient>();
 builder.Services.AddScoped<StudentTools>();
 builder.Services.AddScoped<SupervisorTools>();
 builder.Services.AddScoped<ModuleLeaderTools>();
 builder.Services.AddScoped<IChatToolRegistry, ChatToolRegistry>();
+builder.Services.AddSingleton<IPendingActionStore, PendingActionStore>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
 
 builder.Services.AddRazorComponents()

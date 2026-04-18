@@ -2,13 +2,15 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using project_approval_system.Data;
+using project_approval_system.Services;
 using project_approval_system.Services.Chatbot.Models;
 
 namespace project_approval_system.Services.Chatbot.Tools;
 
 internal sealed class SupervisorTools(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    UserManager<ApplicationUser> userManager)
+    UserManager<ApplicationUser> userManager,
+    IProjectMatchingService matching)
 {
     public IReadOnlyList<ToolDefinition> Definitions { get; } = new List<ToolDefinition>
     {
@@ -32,10 +34,27 @@ internal sealed class SupervisorTools(
             "get_my_capacity",
             "Get the supervisor's project capacity and current load.",
             ToolSchemas.Parse(ToolSchemas.Empty)),
+        new(
+            "express_interest",
+            "Express interest in an open proposal (anonymous — the student is not notified of your identity until you confirm a match). Requires the proposal to be in your expertise area and not already matched. This is a write action — the server will pause to ask the user to confirm before it actually runs.",
+            ToolSchemas.Parse("""{"type":"object","properties":{"proposalId":{"type":"integer","description":"The proposal ID."}},"required":["proposalId"],"additionalProperties":false}""")),
+        new(
+            "confirm_match",
+            "Confirm a match on a proposal you have already expressed interest in. This reveals the student's identity. Requires available capacity. This is a write action — the server will pause to ask the user to confirm before it actually runs.",
+            ToolSchemas.Parse("""{"type":"object","properties":{"proposalId":{"type":"integer","description":"The proposal ID you are confirming a match on."}},"required":["proposalId"],"additionalProperties":false}""")),
     };
 
     public async Task<string> ExecuteAsync(string name, JsonElement args, ChatToolContext ctx, CancellationToken ct)
     {
+        if (name == "express_interest")
+        {
+            return await ExpressInterest(ctx, args);
+        }
+        if (name == "confirm_match")
+        {
+            return await ConfirmMatch(ctx, args);
+        }
+
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return name switch
         {
@@ -46,6 +65,30 @@ internal sealed class SupervisorTools(
             "get_my_capacity" => await GetMyCapacity(db, ctx, ct),
             _ => throw new ArgumentException($"Unknown supervisor tool '{name}'."),
         };
+    }
+
+    private async Task<string> ExpressInterest(ChatToolContext ctx, JsonElement args)
+    {
+        var proposalId = ToolSchemas.GetIntProperty(args, "proposalId");
+        var result = await matching.ExpressInterestAsync(ctx.UserId, proposalId);
+        return ToolSchemas.Serialize(new
+        {
+            succeeded = result.Succeeded,
+            message = result.Message,
+            proposalId,
+        });
+    }
+
+    private async Task<string> ConfirmMatch(ChatToolContext ctx, JsonElement args)
+    {
+        var proposalId = ToolSchemas.GetIntProperty(args, "proposalId");
+        var result = await matching.ConfirmMatchAsync(ctx.UserId, proposalId);
+        return ToolSchemas.Serialize(new
+        {
+            succeeded = result.Succeeded,
+            message = result.Message,
+            proposalId,
+        });
     }
 
     private static async Task<string> ListOpenProposals(ApplicationDbContext db, ChatToolContext ctx, JsonElement args, CancellationToken ct)

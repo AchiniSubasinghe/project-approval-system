@@ -1,0 +1,88 @@
+@namespace project_approval_system.Components.Shared.Chatbot
+
+<MudPaper Class="pa-3 pending-action-card" Elevation="0" Outlined="true">
+    <MudStack Spacing="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@StatusIcon" Color="@StatusColor" Size="Size.Small" />
+            <MudText Typo="Typo.body2"><b>@StatusLabel</b> — @State.Summary</MudText>
+        </MudStack>
+
+        @if (State.Status == PendingActionStatus.AwaitingConfirmation)
+        {
+            <MudStack Row="true" Spacing="1" Justify="Justify.FlexEnd">
+                <MudButton Variant="Variant.Text"
+                           Size="Size.Small"
+                           Disabled="Disabled"
+                           OnClick="@(async () => await OnCancel.InvokeAsync(State.Token))">
+                    Cancel
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           Disabled="Disabled"
+                           OnClick="@(async () => await OnConfirm.InvokeAsync(State.Token))">
+                    Confirm
+                </MudButton>
+            </MudStack>
+        }
+        else if (State.Status == PendingActionStatus.Executing)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                <MudText Typo="Typo.caption">Running…</MudText>
+            </MudStack>
+        }
+        else if (!string.IsNullOrWhiteSpace(State.ResultMessage))
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@State.ResultMessage</MudText>
+        }
+    </MudStack>
+</MudPaper>
+
+<style>
+    .pending-action-card {
+        margin-top: 0.5rem;
+        background-color: var(--mud-palette-background);
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public PendingActionState State { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<string> OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnCancel { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private string StatusLabel => State.Status switch
+    {
+        PendingActionStatus.AwaitingConfirmation => "Confirm action?",
+        PendingActionStatus.Executing => "Running",
+        PendingActionStatus.Confirmed => "Done",
+        PendingActionStatus.Canceled => "Canceled",
+        _ => "",
+    };
+
+    private string StatusIcon => State.Status switch
+    {
+        PendingActionStatus.AwaitingConfirmation => Icons.Material.Filled.QuestionMark,
+        PendingActionStatus.Executing => Icons.Material.Filled.HourglassTop,
+        PendingActionStatus.Confirmed => Icons.Material.Filled.CheckCircle,
+        PendingActionStatus.Canceled => Icons.Material.Filled.Cancel,
+        _ => Icons.Material.Filled.Info,
+    };
+
+    private Color StatusColor => State.Status switch
+    {
+        PendingActionStatus.AwaitingConfirmation => Color.Warning,
+        PendingActionStatus.Executing => Color.Info,
+        PendingActionStatus.Confirmed => Color.Success,
+        PendingActionStatus.Canceled => Color.Default,
+        _ => Color.Default,
+    };
+}

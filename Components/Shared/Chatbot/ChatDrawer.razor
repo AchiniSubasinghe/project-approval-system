@@ -1,3 +1,4 @@
+@namespace project_approval_system.Components.Shared.Chatbot
 @using System.Text
 @using Microsoft.AspNetCore.Components.Authorization
 @using project_approval_system.Services.Chatbot
@@ -46,7 +47,11 @@
 
             @foreach (var message in _history)
             {
-                <ChatMessageView Message="message" />
+                <ChatMessageView Message="message"
+                                 PendingActions="_pendingActions"
+                                 PendingDisabled="_isBusy"
+                                 OnConfirm="OnConfirmPendingAsync"
+                                 OnCancel="OnCancelPendingAsync" />
             }
 
             @if (_isBusy)
@@ -256,6 +261,7 @@
 
     private readonly List<ChatMessage> _history = new();
     private readonly List<ActiveToolCall> _activeToolCalls = new();
+    private readonly Dictionary<string, PendingActionState> _pendingActions = new();
     private string _input = string.Empty;
     private string _streamingText = string.Empty;
     private bool _isBusy;
@@ -297,6 +303,30 @@
 
         var text = _input.Trim();
         _input = string.Empty;
+        await RunStreamAsync((user, ct) => Chatbot.RunTurnAsync(_history, text, user, ct));
+    }
+
+    private async Task OnConfirmPendingAsync(string token)
+    {
+        await ResumePendingAsync(token, confirmed: true);
+    }
+
+    private async Task OnCancelPendingAsync(string token)
+    {
+        await ResumePendingAsync(token, confirmed: false);
+    }
+
+    private async Task ResumePendingAsync(string token, bool confirmed)
+    {
+        if (_isBusy) return;
+        var pending = _pendingActions.Values.FirstOrDefault(p => p.Token == token);
+        if (pending is null) return;
+        pending.Status = PendingActionStatus.Executing;
+        await RunStreamAsync((user, ct) => Chatbot.ResumePendingActionAsync(_history, token, confirmed, user, ct));
+    }
+
+    private async Task RunStreamAsync(Func<System.Security.Claims.ClaimsPrincipal, CancellationToken, IAsyncEnumerable<ChatTurnEvent>> streamFactory)
+    {
         _errorMessage = null;
         _streamingText = string.Empty;
         _activeToolCalls.Clear();
@@ -310,7 +340,7 @@
             var user = state.User;
             var streamBuffer = new StringBuilder();
 
-            await foreach (var ev in Chatbot.RunTurnAsync(_history, text, user, _cts.Token))
+            await foreach (var ev in streamFactory(user, _cts.Token))
             {
                 switch (ev)
                 {
@@ -329,6 +359,28 @@
                             if (existing is not null)
                             {
                                 existing.Finished = true;
+                            }
+                            ScheduleRender();
+                            break;
+                        }
+                    case ActionConfirmationRequiredEvent acr:
+                        _pendingActions[acr.ToolUseId] = new PendingActionState
+                        {
+                            Token = acr.Token,
+                            ToolUseId = acr.ToolUseId,
+                            ToolName = acr.ToolName,
+                            Summary = acr.Summary,
+                            Status = PendingActionStatus.AwaitingConfirmation,
+                        };
+                        ScheduleRender();
+                        break;
+                    case ActionCommittedEvent ac:
+                        {
+                            var match = _pendingActions.Values.FirstOrDefault(p => p.Token == ac.Token);
+                            if (match is not null)
+                            {
+                                match.Status = ac.Confirmed ? PendingActionStatus.Confirmed : PendingActionStatus.Canceled;
+                                match.ResultMessage = ac.Message;
                             }
                             ScheduleRender();
                             break;
@@ -403,6 +455,7 @@
         _streamingText = string.Empty;
         _errorMessage = null;
         _activeToolCalls.Clear();
+        _pendingActions.Clear();
         StateHasChanged();
     }
 

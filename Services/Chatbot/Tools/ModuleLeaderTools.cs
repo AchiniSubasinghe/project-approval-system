@@ -2,13 +2,15 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using project_approval_system.Data;
+using project_approval_system.Services;
 using project_approval_system.Services.Chatbot.Models;
 
 namespace project_approval_system.Services.Chatbot.Tools;
 
 internal sealed class ModuleLeaderTools(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    UserManager<ApplicationUser> userManager)
+    UserManager<ApplicationUser> userManager,
+    IProjectMatchingService matching)
 {
     public IReadOnlyList<ToolDefinition> Definitions { get; } = new List<ToolDefinition>
     {
@@ -32,10 +34,19 @@ internal sealed class ModuleLeaderTools(
             "get_matching_stats",
             "Get aggregate counts of proposals grouped by status.",
             ToolSchemas.Parse(ToolSchemas.Empty)),
+        new(
+            "admin_assign",
+            "Assign a supervisor directly to a proposal, bypassing the supervisor-interest step. Requires the supervisor to have available capacity. Use list_supervisors_with_load to get supervisor IDs. This is a write action — the server will pause to ask the user to confirm before it actually runs.",
+            ToolSchemas.Parse("""{"type":"object","properties":{"proposalId":{"type":"integer","description":"The proposal ID."},"supervisorId":{"type":"string","description":"The supervisor's user ID (from list_supervisors_with_load)."}},"required":["proposalId","supervisorId"],"additionalProperties":false}""")),
     };
 
     public async Task<string> ExecuteAsync(string name, JsonElement args, ChatToolContext ctx, CancellationToken ct)
     {
+        if (name == "admin_assign")
+        {
+            return await AdminAssign(ctx, args);
+        }
+
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return name switch
         {
@@ -46,6 +57,24 @@ internal sealed class ModuleLeaderTools(
             "get_matching_stats" => await GetMatchingStats(db, ct),
             _ => throw new ArgumentException($"Unknown module leader tool '{name}'."),
         };
+    }
+
+    private async Task<string> AdminAssign(ChatToolContext ctx, JsonElement args)
+    {
+        var proposalId = ToolSchemas.GetIntProperty(args, "proposalId");
+        var supervisorId = ToolSchemas.GetOptionalStringProperty(args, "supervisorId") ?? "";
+        if (string.IsNullOrWhiteSpace(supervisorId))
+        {
+            return ToolSchemas.Serialize(new { succeeded = false, message = "supervisorId is required." });
+        }
+        var result = await matching.AdminAssignAsync(ctx.UserId, proposalId, supervisorId);
+        return ToolSchemas.Serialize(new
+        {
+            succeeded = result.Succeeded,
+            message = result.Message,
+            proposalId,
+            supervisorId,
+        });
     }
 
     private static async Task<string> ListAllProposals(ApplicationDbContext db, JsonElement args, CancellationToken ct)

@@ -121,6 +121,41 @@ public sealed class ProjectMatchingService(
         return OperationResult.Success("Match confirmed. Identities are now revealed.");
     }
 
+    public async Task<OperationResult> WithdrawProposalAsync(string studentId, int proposalId)
+    {
+        if (string.IsNullOrWhiteSpace(studentId))
+        {
+            return OperationResult.Failure("Sign-in required.");
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var proposal = await db.Proposals
+            .FirstOrDefaultAsync(p => p.Id == proposalId);
+
+        if (proposal is null)
+        {
+            return OperationResult.Failure("Proposal not found.");
+        }
+
+        if (proposal.OwnerUserId != studentId)
+        {
+            return OperationResult.Failure("You can only withdraw your own proposals.");
+        }
+
+        if (proposal.Status is not (ProposalStatus.Pending or ProposalStatus.UnderReview))
+        {
+            return OperationResult.Failure($"This proposal cannot be withdrawn (status: {proposal.Status}).");
+        }
+
+        proposal.Status = ProposalStatus.Withdrawn;
+        proposal.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return OperationResult.Success("Proposal withdrawn.");
+    }
+
     public async Task<OperationResult> AdminAssignAsync(string moduleLeaderId, int proposalId, string supervisorId)
     {
         if (!await IsInRoleAsync(moduleLeaderId, Roles.ModuleLeader))

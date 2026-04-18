@@ -10,4 +10,11 @@ public interface IChatbotService
         string userInput,
         ClaimsPrincipal user,
         CancellationToken ct);
+
+    IAsyncEnumerable<ChatTurnEvent> ResumePendingActionAsync(
+        IList<ChatMessage> history,
+        string token,
+        bool confirmed,
+        ClaimsPrincipal user,
+        CancellationToken ct);
 }

@@ -5,8 +5,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using project_approval_system.Data
+@using project_approval_system.Services
 @attribute [Authorize(Roles = Roles.Student)]
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IProjectMatchingService Matching
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -183,16 +185,12 @@
         var result = await dialog.Result;
         if (result is null || result.Canceled) return;
 
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var proposal = await db.Proposals.FirstOrDefaultAsync(p => p.Id == id && p.OwnerUserId == userId);
-        if (proposal is null) return;
-        if (!CanWithdraw(proposal.Status)) return;
-
-        proposal.Status = ProposalStatus.Withdrawn;
-        proposal.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-
-        Snackbar.Add("Proposal withdrawn", Severity.Success);
-        await LoadAsync();
+        if (string.IsNullOrEmpty(userId)) return;
+        var outcome = await Matching.WithdrawProposalAsync(userId, id);
+        Snackbar.Add(outcome.Message, outcome.Succeeded ? Severity.Success : Severity.Error);
+        if (outcome.Succeeded)
+        {
+            await LoadAsync();
+        }
     }
 }

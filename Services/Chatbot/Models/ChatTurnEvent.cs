@@ -13,3 +13,16 @@ public sealed record ToolCallFinishedEvent(string ToolUseId, string ToolName, in
 public sealed record TurnCompletedEvent(string StopReason) : ChatTurnEvent;
 
 public sealed record TurnErrorEvent(string Message) : ChatTurnEvent;
+
+public sealed record ActionConfirmationRequiredEvent(
+    string Token,
+    string ToolUseId,
+    string ToolName,
+    string Summary,
+    string ParamsJson) : ChatTurnEvent;
+
+public sealed record ActionCommittedEvent(
+    string Token,
+    bool Confirmed,
+    bool Succeeded,
+    string Message) : ChatTurnEvent;

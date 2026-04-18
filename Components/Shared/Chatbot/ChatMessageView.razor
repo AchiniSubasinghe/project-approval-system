@@ -1,3 +1,4 @@
+@namespace project_approval_system.Components.Shared.Chatbot
 @using project_approval_system.Services.Chatbot.Models
 
 @if (Message is not null && HasRenderableContent)
@@ -22,6 +23,15 @@
                         <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Build" Class="chat-tool-chip">
                             @block.ToolName
                         </MudChip>
+                        @if (PendingActions is not null
+                             && !string.IsNullOrEmpty(block.ToolUseId)
+                             && PendingActions.TryGetValue(block.ToolUseId, out var pending))
+                        {
+                            <PendingActionCard State="pending"
+                                               Disabled="PendingDisabled"
+                                               OnConfirm="OnConfirm"
+                                               OnCancel="OnCancel" />
+                        }
                         break;
                 }
             }
@@ -32,6 +42,18 @@
 @code {
     [Parameter, EditorRequired]
     public ChatMessage? Message { get; set; }
+
+    [Parameter]
+    public IReadOnlyDictionary<string, PendingActionState>? PendingActions { get; set; }
+
+    [Parameter]
+    public bool PendingDisabled { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnCancel { get; set; }
 
     private bool IsUser => Message?.Role == ChatRole.User;
 

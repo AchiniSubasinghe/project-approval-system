@@ -1,11 +1,14 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using project_approval_system.Data;
+using project_approval_system.Services;
 using project_approval_system.Services.Chatbot.Models;
 
 namespace project_approval_system.Services.Chatbot.Tools;
 
-internal sealed class StudentTools(IDbContextFactory<ApplicationDbContext> dbFactory)
+internal sealed class StudentTools(
+    IDbContextFactory<ApplicationDbContext> dbFactory,
+    IProjectMatchingService matching)
 {
     public IReadOnlyList<ToolDefinition> Definitions { get; } = new List<ToolDefinition>
     {
@@ -29,10 +32,19 @@ internal sealed class StudentTools(IDbContextFactory<ApplicationDbContext> dbFac
             "list_research_areas",
             "List all research areas available in the system (for reference when choosing a topic).",
             ToolSchemas.Parse(ToolSchemas.Empty)),
+        new(
+            "withdraw_my_proposal",
+            "Withdraw one of the student's own proposals (only allowed while status is Pending or UnderReview). This is a write action — the server will pause to ask the user to confirm before it actually runs.",
+            ToolSchemas.Parse("""{"type":"object","properties":{"proposalId":{"type":"integer","description":"The proposal ID owned by the signed-in student."}},"required":["proposalId"],"additionalProperties":false}""")),
     };
 
     public async Task<string> ExecuteAsync(string name, JsonElement args, ChatToolContext ctx, CancellationToken ct)
     {
+        if (name == "withdraw_my_proposal")
+        {
+            return await WithdrawMyProposal(ctx, args);
+        }
+
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return name switch
         {
@@ -43,6 +55,18 @@ internal sealed class StudentTools(IDbContextFactory<ApplicationDbContext> dbFac
             "list_research_areas" => await ListResearchAreas(db, ct),
             _ => throw new ArgumentException($"Unknown student tool '{name}'."),
         };
+    }
+
+    private async Task<string> WithdrawMyProposal(ChatToolContext ctx, JsonElement args)
+    {
+        var proposalId = ToolSchemas.GetIntProperty(args, "proposalId");
+        var result = await matching.WithdrawProposalAsync(ctx.UserId, proposalId);
+        return ToolSchemas.Serialize(new
+        {
+            succeeded = result.Succeeded,
+            message = result.Message,
+            proposalId,
+        });
     }
 
     private static async Task<string> ListMyProposals(ApplicationDbContext db, ChatToolContext ctx, CancellationToken ct)
